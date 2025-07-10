@@ -3,58 +3,80 @@ from shapely.geometry import shape, mapping
 from shapely.ops import transform
 from pyproj import Transformer
 
-# --- REST endpoints -------------------------------------------------
+# ---------- REST endpoints ----------
 QLD_URL = ("https://spatial-gis.information.qld.gov.au/arcgis/rest/services/"
            "PlanningCadastre/LandParcelPropertyFramework/MapServer/4/query")
 NSW_URL = ("https://maps.six.nsw.gov.au/arcgis/rest/services/public/"
            "NSW_Cadastre/MapServer/9/query")
 
+# ---------- helpers ----------
 def fetch_geom(lotplan: str):
-    """Return iterable of GeoJSON geometries (WGS-84) for one Lot/Plan ID."""
-    is_qld = re.match(r"^\d+[A-Z]{1,3}\d+$", lotplan, re.I)  # crude but works
+    """Return iterable of WGS-84 GeoJSON geometries for one Lot/Plan."""
+    is_qld = re.match(r"^\d+[A-Z]{1,3}\d+$", lotplan, re.I)
     url, field = (QLD_URL, "lotplan") if is_qld else (NSW_URL, "lotidstring")
-
     r = requests.get(url, params={
         "where": f"{field}='{lotplan}'",
-        "returnGeometry": "true",
-        "outFields": "*",
-        "f": "geojson"
+        "returnGeometry": "true", "outFields": "*", "f": "geojson"
     }).json()
 
     for feat in r.get("features", []):
-        g = feat["geometry"]
-        wkid = g.get("spatialReference", {}).get("wkid", 4326)
+        geom = feat["geometry"]
+        wkid = geom.get("spatialReference", {}).get("wkid", 4326)
         if wkid != 4326:
-            t = Transformer.from_crs(wkid, 4326, always_xy=True)
-            yield mapping(transform(lambda x, y, *_: t.transform(x, y), shape(g)))
+            tfm = Transformer.from_crs(wkid, 4326, always_xy=True)
+            yield mapping(transform(lambda x, y, *_: tfm.transform(x, y), shape(geom)))
         else:
-            yield g
+            yield geom
 
-# --- Streamlit UI ---------------------------------------------------
+def rgba_to_kml(hex_rgb: str, opacity_pct: int) -> str:
+    """
+    Convert '#RRGGBB' + opacity% to KML colour 'aabbggrr'.
+    0 % = fully transparent; 100 % = fully opaque.
+    """
+    hex_rgb = hex_rgb.lstrip("#")
+    r, g, b = hex_rgb[:2], hex_rgb[2:4], hex_rgb[4:6]
+    alpha = int(round(255 * opacity_pct / 100))
+    return f"{alpha:02x}{b}{g}{r}"  # KML = AA BB GG RR
+
+# ---------- Streamlit UI ----------
 st.set_page_config(page_title="Lot/Plan → KML", layout="centered")
-st.title("Lot/Plan → KML (QLD + NSW)")
+st.title("Lot/Plan → KML (QLD & NSW)")
 
-raw = st.text_area("Paste Lot/Plan IDs (one per line):", height=220,
-                   placeholder="6RP702264\n5//DP123456\n7/1/DP98765")
+lot_text = st.text_area(
+    "Paste Lot/Plan IDs (one per line):",
+    height=220,
+    placeholder="6RP702264\n5//DP123456\n7/1/DP98765"
+)
 
-poly_colour = st.color_picker("Polygon colour", "#ff6600")
-line_colour = st.color_picker("Boundary line colour", "#444444")
+folder_name = st.text_input("Folder name inside the KML", "Parcels")
 
-if st.button("Create KML") and raw.strip():
+poly_hex = st.color_picker("Polygon fill colour", "#ff6600")
+poly_opacity = st.slider("Polygon opacity (%)", 0, 100, 70)
+
+line_hex = st.color_picker("Boundary line colour", "#444444")
+line_width = st.slider("Line width (px)", 0.5, 5.0, 1.2, step=0.1)
+
+if st.button("Create KML") and lot_text.strip():
     kml = simplekml.Kml()
-    for lp in [l.strip() for l in raw.splitlines() if l.strip()]:
-        for geom in fetch_geom(lp):
-            ply = kml.newpolygon(
-                name = lp,
-                outerboundaryis = geom["coordinates"][0]
-            )
-            ply.style.polystyle.color = poly_colour
-            ply.style.linestyle.color = line_colour
-            ply.style.linestyle.width = 1.2
+    parent_folder = kml.newfolder(name=folder_name.strip() or "Parcels")
 
-# Get the raw KML as a UTF-8 string and wrap it in a BytesIO
-    buf = io.BytesIO(kml.kml().encode("utf-8"))
-    st.download_button("📥 Download KML",
-                       data=buf.getvalue(),
-                       file_name="parcels.kml",
-                       mime="application/vnd.google-earth.kml+xml")
+    poly_kml_col = rgba_to_kml(poly_hex, poly_opacity)
+    line_kml_col = rgba_to_kml(line_hex, 100)  # lines stay fully opaque
+
+    for lp in [l.strip() for l in lot_text.splitlines() if l.strip()]:
+        for geom in fetch_geom(lp):
+            poly = parent_folder.newpolygon(
+                name=lp,
+                outerboundaryis=geom["coordinates"][0]
+            )
+            poly.style.polystyle.color = poly_kml_col
+            poly.style.linestyle.color = line_kml_col
+            poly.style.linestyle.width = line_width
+
+    kml_bytes = io.BytesIO(kml.kml().encode("utf-8"))
+    st.download_button(
+        "📥 Download KML",
+        data=kml_bytes.getvalue(),
+        file_name="parcels.kml",
+        mime="application/vnd.google-earth.kml+xml"
+    )
