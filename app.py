@@ -1,5 +1,6 @@
 import os, re, io, json
 import streamlit as st
+MAPBOX_TOKEN = st.secrets["MAPBOX_API_KEY"]
 import pydeck as pdk
 import requests, simplekml
 import geopandas as gpd
