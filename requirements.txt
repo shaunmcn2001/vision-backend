@@ -1,5 +1,6 @@
 streamlit==1.46.1
-leafmap==0.34.3      # wraps folium + plugins, no JS coding needed
+folium==0.16.0
+streamlit-folium==0.20.0
 requests
 simplekml
 shapely==2.1.1
