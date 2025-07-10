@@ -1,9 +1,13 @@
-import streamlit as st, requests, simplekml, io, re, geopandas as gpd
+# app.py  –  top of file
+import streamlit as st
+import requests
+import simplekml
+import io, re
+import geopandas as gpd
 from shapely.geometry import shape, mapping
 from shapely.ops import unary_union, transform
 from pyproj import Transformer
 import leafmap.foliumap as leafmap
-
 # ---------- ArcGIS REST endpoints ----------
 QLD_URL = ("https://spatial-gis.information.qld.gov.au/arcgis/rest/services/"
            "PlanningCadastre/LandParcelPropertyFramework/MapServer/4/query")
