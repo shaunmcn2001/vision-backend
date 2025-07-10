@@ -158,7 +158,8 @@ with col_map:
             layers=layers,
             initial_view_state=base_view,
             map_style="mapbox://styles/mapbox/outdoors-v12",
-            mapbox_key=MAPBOX_TOKEN,  # valid for pydeck <=0.7.x
+            api_keys={"mapbox": MAPBOX_TOKEN},   # new arg in pydeck ≥0.8
+            map_provider="mapbox",
             tooltip={"html": "<b>{lp}</b>", "style": {"color": "white"}},
         ),
         use_container_width=True,
