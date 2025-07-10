@@ -11,7 +11,6 @@ import os, re, io, json
 import streamlit as st
 import pydeck as pdk
 import requests, simplekml
-import geopandas as gpd
 from shapely.geometry import shape, mapping
 from shapely.ops import unary_union, transform
 from pyproj import Transformer
