@@ -1,6 +1,5 @@
-streamlit==1.46.1      # Wheel available for Python 3.13
-pydeck==0.8.1b0        # Compatible with Streamlit ≥1.46
-pillow==11.3.0         # Satisfies Streamlit, wheel exists
+streamlit==1.46.1
+leafmap==0.34.3      # wraps folium + plugins, no JS coding needed
 requests
 simplekml
 shapely==2.1.1
