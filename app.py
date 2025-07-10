@@ -1,76 +1,109 @@
-import streamlit as st, requests, simplekml, io, re
+import streamlit as st, requests, simplekml, io, re, geopandas as gpd
 from shapely.geometry import shape, mapping
-from shapely.ops import transform
+from shapely.ops import unary_union, transform
 from pyproj import Transformer
+import leafmap.foliumap as leafmap
 
-# ---------- REST endpoints ----------
+# ---------- ArcGIS REST endpoints ----------
 QLD_URL = ("https://spatial-gis.information.qld.gov.au/arcgis/rest/services/"
            "PlanningCadastre/LandParcelPropertyFramework/MapServer/4/query")
 NSW_URL = ("https://maps.six.nsw.gov.au/arcgis/rest/services/public/"
            "NSW_Cadastre/MapServer/9/query")
 
-# ---------- helpers ----------
-def fetch_geom(lotplan: str):
-    is_qld = re.match(r"^\d+[A-Z]{1,3}\d+$", lotplan, re.I)
+# ---------- Helper functions ----------
+def fetch_merged_geom(lotplan: str):
+    """Return a merged (Multi)Polygon for a Lot/Plan, or None if not found."""
+    is_qld = bool(re.match(r"^\d+[A-Z]{1,3}\d+$", lotplan, re.I))
     url, field = (QLD_URL, "lotplan") if is_qld else (NSW_URL, "lotidstring")
-    r = requests.get(url, params={
+
+    js = requests.get(url, params={
         "where": f"{field}='{lotplan}'",
-        "returnGeometry": "true", "outFields": "*", "f": "geojson"
+        "returnGeometry": "true", "f": "geojson"
     }).json()
-    for feat in r.get("features", []):
-        geom = feat["geometry"]
+
+    feats = js.get("features", [])
+    if not feats:
+        return None
+
+    shapes = []
+    for f in feats:
+        geom = f["geometry"]
         wkid = geom.get("spatialReference", {}).get("wkid", 4326)
+        g = shape(geom)
         if wkid != 4326:
-            tfm = Transformer.from_crs(wkid, 4326, always_xy=True)
-            yield mapping(transform(lambda x, y, *_: tfm.transform(x, y), shape(geom)))
-        else:
-            yield geom
+            t = Transformer.from_crs(wkid, 4326, always_xy=True)
+            g = transform(t.transform, g)
+        shapes.append(g)
+    return unary_union(shapes)          # merge into one geometry
+
 
 def rgba_to_kml(hex_rgb: str, opacity_pct: int) -> str:
-    hex_rgb = hex_rgb.lstrip("#")
-    r, g, b = hex_rgb[:2], hex_rgb[2:4], hex_rgb[4:6]
+    """'#rrggbb' + opacity -> 'aabbggrr' (KML colour)"""
+    r, g, b = hex_rgb.lstrip("#")[:2], hex_rgb[3:5], hex_rgb[5:]
     alpha = int(round(255 * opacity_pct / 100))
-    return f"{alpha:02x}{b}{g}{r}"          # KML expects aabbggrr
+    return f"{alpha:02x}{b}{g}{r}"
+
 
 # ---------- Streamlit UI ----------
 st.set_page_config(page_title="Lot/Plan → KML", layout="centered")
-st.title("Lot/Plan → KML (QLD & NSW)")
+st.title("Lot/Plan → KML  |  QLD + NSW")
 
-lot_text = st.text_area(
-    "Paste Lot/Plan IDs (one per line):",
-    height=220,
-    placeholder="6RP702264\n5//DP123456\n7/1/DP98765"
-)
+lot_text = st.text_area("Paste Lot/Plan IDs (one per line):",
+                        height=180,
+                        placeholder="6RP702264\n5//DP123456")
 
-folder_name = st.text_input("Folder name inside the KML", "Parcels")
+folder_name   = st.text_input("Folder name inside the KML", "Parcels")
+poly_hex      = st.color_picker("Polygon fill colour", "#ff6600")
+poly_opacity  = st.number_input("Polygon opacity (0–100 %)", 0, 100, 70)
+line_hex      = st.color_picker("Boundary line colour", "#444444")
+line_width    = st.number_input("Line width (px)", 0.1, 10.0, 1.2, step=0.1)
 
-poly_hex = st.color_picker("Polygon fill colour", "#ff6600")
-poly_opacity = st.number_input("Polygon opacity (0–100 %)", min_value=0, max_value=100, value=70)
+if st.button("🔍 Search Lots") and lot_text.strip():
+    lot_ids = [lp.strip() for lp in lot_text.splitlines() if lp.strip()]
+    lot_geoms, missing = {}, []
 
-line_hex = st.color_picker("Boundary line colour", "#444444")
-line_width = st.number_input("Line width (px)", min_value=0.1, max_value=10.0, value=1.2, step=0.1)
+    for lp in lot_ids:
+        g = fetch_merged_geom(lp)
+        if g:
+            lot_geoms[lp] = g
+        else:
+            missing.append(lp)
 
-if st.button("Create KML") and lot_text.strip():
-    kml = simplekml.Kml()
-    parent_folder = kml.newfolder(name=folder_name.strip() or "Parcels")
+    if missing:
+        st.warning(f"No parcel found for: {', '.join(missing)}")
 
-    poly_kml_col  = rgba_to_kml(poly_hex,  poly_opacity)
-    line_kml_col  = rgba_to_kml(line_hex, 100)          # outlines stay opaque
+    if lot_geoms:
+        # --- Preview map with leafmap -------------------------------
+        m = leafmap.Map(center=[-25, 145], zoom=4, draw_export=False)
+        for lp, geom in lot_geoms.items():
+            gdf = gpd.GeoDataFrame({"lotplan": [lp]}, geometry=[geom], crs=4326)
+            style = {
+                "fillColor": poly_hex,
+                "color": line_hex,
+                "weight": line_width,
+                "fillOpacity": poly_opacity / 100
+            }
+            m.add_gdf(gdf, layer_name=lp, style=style)
+        m.to_streamlit(height=500)      # shiny map in the app   [oai_citation:0‡GitHub](https://github.com/opengeos/leafmap/discussions/69?utm_source=chatgpt.com)
 
-    for lp in [l.strip() for l in lot_text.splitlines() if l.strip()]:
-        for geom in fetch_geom(lp):
-            poly = parent_folder.newpolygon(
-                name=lp,
-                outerboundaryis=geom["coordinates"][0]
-            )
-            poly.style.polystyle.color  = poly_kml_col
-            poly.style.linestyle.color  = line_kml_col
-            poly.style.linestyle.width  = float(line_width)
+        # --- Build KML for download -------------------------------
+        poly_kml = rgba_to_kml(poly_hex, poly_opacity)
+        line_kml = rgba_to_kml(line_hex, 100)
 
-    kml_bytes = io.BytesIO(kml.kml().encode("utf-8"))
-    st.download_button(
-        "📥 Download KML",
-        data=kml_bytes.getvalue(),
-        file_name="parcels.kml",
-        mime="application/vnd.google-earth.kml+xml"
-    )
+        kml = simplekml.Kml()
+        folder = kml.newfolder(name=(folder_name or "Parcels"))
+        for lp, geom in lot_geoms.items():
+            coords = mapping(geom)["coordinates"][0]
+            p = folder.newpolygon(name=lp, outerboundaryis=coords)
+            p.style.polystyle.color = poly_kml
+            p.style.linestyle.color = line_kml
+            p.style.linestyle.width = float(line_width)
+
+        st.download_button(
+            "📥 Download KML",
+            data=io.BytesIO(kml.kml().encode("utf-8")).getvalue(),
+            file_name="parcels.kml",
+            mime="application/vnd.google-earth.kml+xml"
+        )
+    else:
+        st.error("No valid parcels returned—nothing to preview or download.")
