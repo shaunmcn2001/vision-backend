@@ -1,7 +1,7 @@
 streamlit
+pydeck
 requests
 simplekml
 shapely
 pyproj
 geopandas
-leafmap
