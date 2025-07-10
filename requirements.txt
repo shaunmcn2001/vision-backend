@@ -1,5 +1,5 @@
 streamlit
-pydeck
+pydeck==0.7.1          # Streamlit Cloud’s default line (keeps the old mapbox_key arg)
 requests
 simplekml
 shapely
