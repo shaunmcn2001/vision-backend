@@ -1,7 +1,6 @@
-# All packages below have pre-built wheels for Python 3.13, so no compilations
-streamlit==1.46.1          # latest stable
-pydeck==0.8.1b0            # satisfies Streamlit’s >=0.8.0b4,<1 constraint
-pillow==11.3.0             # wheel available; fits Streamlit’s <12 cap
+streamlit==1.46.1      # Wheel available for Python 3.13
+pydeck==0.8.1b0        # Compatible with Streamlit ≥1.46
+pillow==11.3.0         # Satisfies Streamlit, wheel exists
 requests
 simplekml
 shapely==2.1.1
