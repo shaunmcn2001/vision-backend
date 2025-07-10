@@ -1,6 +1,8 @@
-streamlit
-pydeck==0.7.1          # Streamlit Cloud’s default line (keeps the old mapbox_key arg)
+# Pin versions that already ship Python-3.13 wheels – avoids long source builds
+streamlit==1.46.1     # latest stable, includes wheels for Py 3.13
+pillow==11.3.0        # satisfies Streamlit; wheel available
+pydeck==0.7.1         # matches the old mapbox_key argument
 requests
 simplekml
-shapely
-pyproj
+shapely==2.1.1        # wheel for Py 3.13
+pyproj==3.7.1         # wheel for Py 3.13
