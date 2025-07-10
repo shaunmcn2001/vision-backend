@@ -3,3 +3,5 @@ requests
 simplekml
 shapely
 pyproj
+geopandas
+leafmap
