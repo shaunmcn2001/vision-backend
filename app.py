@@ -52,8 +52,8 @@ if st.button("Create KML") and raw.strip():
             ply.style.linestyle.color = line_colour
             ply.style.linestyle.width = 1.2
 
-    buf = io.BytesIO()
-    kml.save(buf);  buf.seek(0)
+# Get the raw KML as a UTF-8 string and wrap it in a BytesIO
+    buf = io.BytesIO(kml.kml().encode("utf-8"))
     st.download_button("📥 Download KML",
                        data=buf.getvalue(),
                        file_name="parcels.kml",
