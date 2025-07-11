@@ -6,7 +6,7 @@ from shapely.geometry import shape, mapping
 from shapely.ops import unary_union, transform
 from pyproj import Transformer
 
-# ─── ArcGIS REST parcel endpoints ──────────────────────────
+# ─── ArcGIS parcel services ──────────────────────────────────────────
 QLD_URL = (
     "https://spatial-gis.information.qld.gov.au/arcgis/rest/services/"
     "PlanningCadastre/LandParcelPropertyFramework/MapServer/4/query"
@@ -16,27 +16,26 @@ NSW_URL = (
     "NSW_Cadastre/MapServer/9/query"
 )
 
-# ----------------------------------------------------------------------
-# Helper: fetch ALL geometries; merge those that share the same Lot/Plan
-# ----------------------------------------------------------------------
-def fetch_geoms(lotplans: list[str]):
-    """Return {lotplan: merged_shape} and a list of IDs that were not found."""
-    def is_qld(lp):  # crude but effective test
-        return bool(re.match(r"^\d+[A-Z]{1,3}\d+$", lp, re.I))
-
-    grouped = defaultdict(list)   # lotplan → list[Polygon/MultiPolygon]
+# ─── Helpers ─────────────────────────────────────────────────────────
+def fetch_geoms(lotplans):
+    """Return {lotplan: merged_geometry}  and  missing_ids list."""
+    grouped = defaultdict(list)
     missing = []
+
+    def is_qld(lp):   # simple pattern: digits + letters + digits
+        return bool(re.match(r"^\d+[A-Z]{1,3}\d+$", lp, re.I))
 
     for lp in lotplans:
         url, fld = (QLD_URL, "lotplan") if is_qld(lp) else (NSW_URL, "lotidstring")
-
         try:
             js = requests.get(
                 url,
-                params={"where": f"{fld}='{lp}'",
-                        "returnGeometry": "true",
-                        "f": "geojson"},
-                timeout=10,
+                params={
+                    "where": f"{fld}='{lp}'",
+                    "returnGeometry": "true",
+                    "f": "geojson",
+                },
+                timeout=12,
             ).json()
 
             feats = js.get("features", [])
@@ -44,10 +43,12 @@ def fetch_geoms(lotplans: list[str]):
                 missing.append(lp)
                 continue
 
-            wkid = feats[0]["geometry"].get("spatialReference", {}).get("wkid", 4326)
-            tfm = None
-            if wkid != 4326:
-                tfm = Transformer.from_crs(wkid, 4326, always_xy=True).transform
+            # ── determine WKID ──
+            wkid = js.get("spatialReference", {}).get("wkid")
+            if wkid is None:
+                wkid = feats[0]["geometry"].get("spatialReference", {}).get("wkid", 4326)
+            tfm = (Transformer.from_crs(wkid, 4326, always_xy=True).transform
+                   if wkid and wkid != 4326 else None)
 
             for feat in feats:
                 geom = shape(feat["geometry"])
@@ -60,13 +61,12 @@ def fetch_geoms(lotplans: list[str]):
     return merged, missing
 
 
-def kml_colour(hex_rgb: str, pct: int):
-    """'#rrggbb', 0-100 → KML 'aabbggrr'."""
+def kml_colour(hex_rgb, pct):
     r, g, b = hex_rgb[1:3], hex_rgb[3:5], hex_rgb[5:7]
     a = int(round(255 * pct / 100))
-    return f"{a:02x}{b}{g}{r}"
+    return f"{a:02x}{b}{g}{r}"  # KML expects aabbggrr
 
-# ─── Streamlit page ----------------------------------------------------
+# ─── Streamlit page ─────────────────────────────────────────────────
 st.set_page_config(page_title="Lot/Plan → KML", layout="wide")
 
 with st.sidebar:
@@ -80,7 +80,7 @@ with st.sidebar:
     folder   = st.text_input("Folder name in KML", "Parcels")
     run_btn  = st.button("🔍 Search lots", use_container_width=True)
 
-# ─── Fetch & merge geometries -----------------------------------------
+# ─── Fetch & merge parcels ───────────────────────────────────────────
 if run_btn and lot_text.strip():
     ids = [i.strip() for i in lot_text.splitlines() if i.strip()]
     with st.spinner("Fetching & merging parcels…"):
@@ -88,18 +88,19 @@ if run_btn and lot_text.strip():
 
     if missing:
         st.sidebar.warning("Not found: " + ", ".join(missing))
+    st.sidebar.info(f"Loaded {len(geoms)} parcel"
+                    f"{'' if len(geoms)==1 else 's'}.")
 
     st.session_state["geoms"] = geoms
-    st.session_state["style"] = dict(
-        fill=fill_hex, op=fill_op, line=line_hex,
-        w=line_w, folder=folder
-    )
+    st.session_state["style"] = dict(fill=fill_hex, op=fill_op,
+                                     line=line_hex, w=line_w,
+                                     folder=folder)
 
-# ─── Build full-screen map --------------------------------------------
+# ─── Build map ───────────────────────────────────────────────────────
 m = folium.Map(location=[-25, 145], zoom_start=5,
                control_scale=True, width="100%", height="100vh")
 
-# Base layers (all toggleable via LayerControl)
+# Base layers
 folium.TileLayer(
     tiles="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
     name="OpenStreetMap", attr="© OpenStreetMap"
@@ -115,20 +116,24 @@ folium.TileLayer(
     name="Esri Topo", attr="© Esri"
 ).add_to(m)
 
-# Parcel layer (one merged shape per Lot/Plan)
+# Parcel polygons
 if "geoms" in st.session_state and st.session_state["geoms"]:
     s = st.session_state["style"]
-    st_f = lambda _:{'fillColor': s['fill'], 'color': s['line'],
-                     'weight': s['w'], 'fillOpacity': s['op']/100}
+    sty = lambda _:{'fillColor': s['fill'],
+                    'color':     s['line'],
+                    'weight':    s['w'],
+                    'fillOpacity': s['op']/100}
     for lp, g in st.session_state["geoms"].items():
-        folium.GeoJson(mapping(g), name=lp,
-                       style_function=st_f).add_child(folium.Popup(lp)).add_to(m)
+        folium.GeoJson(mapping(g), style_function=sty,
+                       name=lp).add_child(folium.Popup(lp)).add_to(m)
 
-# Layer switcher
+# Layer switcher (top-right)
 folium.LayerControl(position="topright", collapsed=False).add_to(m)
-st_folium(m, height=700, use_container_width=True)
 
-# ─── Download KML ------------------------------------------------------
+# Render map with stable key to avoid stale-event warnings
+st_folium(m, height=700, use_container_width=True, key="main_map")
+
+# ─── Download KML ────────────────────────────────────────────────────
 if ("geoms" in st.session_state and st.session_state["geoms"]
     and st.sidebar.button("📥 Download KML", use_container_width=True)):
     s, kml = st.session_state["style"], simplekml.Kml()
