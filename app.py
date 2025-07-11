@@ -3,30 +3,30 @@ from collections import defaultdict
 from streamlit_option_menu import option_menu
 from streamlit_folium import st_folium
 import folium, simplekml
-from folium.plugins import GroupedLayerControl
 from shapely.geometry import shape, mapping, Polygon
 from shapely.ops import unary_union, transform
 from pyproj import Transformer, Geod
 
-# ─── Page & base theme ──────────────────────────────────────────────
+# ─── Page & theme ──────────────────────────────────────────────
 st.set_page_config(page_title="Lot/Plan → KML",
-                   page_icon="📍",
-                   layout="wide",
+                   page_icon="📍", layout="wide",
                    initial_sidebar_state="collapsed")
 
+# Branded banner
 st.markdown("""
 <div style='background:#ff6600;color:white;font-size:20px;font-weight:600;
             padding:6px 20px;border-radius:8px;margin-bottom:6px;'>
   LAWD – Parcel Toolkit
 </div>""", unsafe_allow_html=True)
 
+# Slim sidebar + map styling
 st.markdown("""
 <style>
 div[data-testid='stSidebar']{width:320px;}
 #main_map iframe{border-radius:12px;box-shadow:0 4px 14px rgba(0,0,0,0.25);}
 </style>""", unsafe_allow_html=True)
 
-# ─── Data sources ───────────────────────────────────────────────────
+# ─── Data sources ─────────────────────────────────────────────
 QLD_URL = ("https://spatial-gis.information.qld.gov.au/arcgis/rest/services/"
            "PlanningCadastre/LandParcelPropertyFramework/MapServer/4/query")
 NSW_URL = ("https://maps.six.nsw.gov.au/arcgis/rest/services/public/"
@@ -34,9 +34,23 @@ NSW_URL = ("https://maps.six.nsw.gov.au/arcgis/rest/services/public/"
 FLOOD_WMS = ("https://qrospatial.information.qld.gov.au/services/opendata/"
              "qra/FloodHazards/MapServer/WMSServer")
 
+BMAPS = {  # name → (tile URL, attribution)
+    "OpenStreetMap":
+        ("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+         "© OpenStreetMap"),
+    "Esri Imagery":
+        ("https://services.arcgisonline.com/ArcGIS/rest/services/"
+         "World_Imagery/MapServer/tile/{z}/{y}/{x}",
+         "© Esri"),
+    "Esri Topo":
+        ("https://services.arcgisonline.com/ArcGIS/rest/services/"
+         "World_Topo_Map/MapServer/tile/{z}/{y}/{x}",
+         "© Esri"),
+}
+
 geod = Geod(ellps="WGS84")
 
-# ─── Helper: fetch & merge parcels ──────────────────────────────────
+# ─── Helper: fetch & merge parcels ───────────────────────────
 def fetch_geoms(lotplans):
     grouped, missing = defaultdict(list), []
     is_qld = lambda lp: bool(re.match(r"^\d+[A-Z]{1,3}\d+$", lp, re.I))
@@ -69,13 +83,13 @@ def fetch_geoms(lotplans):
     return merged, missing
 
 def kml_colour(hex_rgb, pct):
-    r,g,b = hex_rgb[1:3],hex_rgb[3:5],hex_rgb[5:7]
-    a = int(round(255*pct/100))
+    r,g,b=hex_rgb[1:3],hex_rgb[3:5],hex_rgb[5:7]
+    a=int(round(255*pct/100))
     return f"{a:02x}{b}{g}{r}"
 
-# ─── Sidebar icon menu ──────────────────────────────────────────────
+# ─── Sidebar icon menu ───────────────────────────────────────
 with st.sidebar:
-    choice = option_menu(
+    tab = option_menu(
         None,
         ["Query","Layers","Downloads"],
         icons=["search","layers","download"],
@@ -85,11 +99,14 @@ with st.sidebar:
             "icon":{"color":"white","font-size":"20px"},
             "nav-link":{"font-size":"14px","margin":"0"},
             "nav-link-selected":{"background-color":"#ff6600"},
-        },
-    )
+        })
 
-# ─── Tab: Query ─────────────────────────────────────────────────────
-if choice == "Query":
+# Default session values
+st.session_state.setdefault("basemap", "OpenStreetMap")
+st.session_state.setdefault("show_flood", False)
+
+# ─── Tab: Query ──────────────────────────────────────────────
+if tab == "Query":
     st.sidebar.subheader("Lot/Plan search")
     lot_text = st.sidebar.text_area("IDs", height=140,
                                     placeholder="6RP702264\n5//DP123456")
@@ -98,56 +115,52 @@ if choice == "Query":
     line_hex = st.sidebar.color_picker("Outline colour","#2e2e2e")
     line_w   = st.sidebar.number_input("Outline width px",0.5,6.0,1.2,step=0.1)
     folder   = st.sidebar.text_input("Folder name in KML","Parcels")
-    run_btn  = st.sidebar.button("🔍 Search",use_container_width=True)
-
-    if run_btn and lot_text.strip():
-        ids = [i.strip() for i in lot_text.splitlines() if i.strip()]
+    if st.sidebar.button("🔍 Search",use_container_width=True) and lot_text.strip():
+        ids=[i.strip() for i in lot_text.splitlines() if i.strip()]
         with st.spinner("Fetching parcels…"):
-            geoms, missing = fetch_geoms(ids)
-
+            geoms,missing=fetch_geoms(ids)
         if missing: st.sidebar.warning("Not found: "+", ".join(missing))
         st.sidebar.info(f"Loaded {len(geoms)} parcel{'s' if len(geoms)!=1 else ''}.")
-        st.session_state["geoms"] = geoms
-        st.session_state["style"] = dict(fill=fill_hex, op=fill_op,
-                                         line=line_hex, w=line_w, folder=folder)
+        st.session_state["geoms"]=geoms
+        st.session_state["style"]=dict(fill=fill_hex,op=fill_op,line=line_hex,
+                                       w=line_w,folder=folder)
 
-# ─── Tab: Layers ────────────────────────────────────────────────────
-if choice == "Layers":
-    st.sidebar.subheader("Toggle overlays")
-    show_flood = st.sidebar.checkbox("QLD Flood Hazard",
-                                     value=st.session_state.get("show_flood", False))
-    st.session_state["show_flood"] = show_flood
+# ─── Tab: Layers ─────────────────────────────────────────────
+if tab == "Layers":
+    st.sidebar.subheader("Basemap")
+    st.session_state["basemap"] = st.sidebar.radio(
+        label="", options=list(BMAPS.keys()),
+        index=list(BMAPS.keys()).index(st.session_state["basemap"])
+    )
 
-# ─── Build map (runs every draw) ────────────────────────────────────
+    st.sidebar.subheader("Overlays")
+    st.session_state["show_flood"] = st.sidebar.checkbox(
+        "QLD Flood Hazard", value=st.session_state["show_flood"])
+
+# ─── Build map (always) ─────────────────────────────────────
 m = folium.Map(location=[-25,145], zoom_start=5,
                control_scale=True, width="100%", height="100vh")
 
-# Basemaps
-folium.TileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-                 name="OpenStreetMap", attr="© OpenStreetMap").add_to(m)
-folium.TileLayer("https://services.arcgisonline.com/arcgis/rest/services/"
-                 "World_Imagery/MapServer/tile/{z}/{y}/{x}",
-                 name="Esri Imagery", attr="© Esri").add_to(m)
-folium.TileLayer("https://services.arcgisonline.com/arcgis/rest/services/"
-                 "World_Topo_Map/MapServer/tile/{z}/{y}/{x}",
-                 name="Esri Topo", attr="© Esri").add_to(m)
+# Basemap (only the selected one)
+b_url, b_attr = BMAPS[st.session_state["basemap"]]
+folium.TileLayer(b_url, name=st.session_state["basemap"],
+                 attr=b_attr).add_to(m)
 
-# Optional flood layer
-overlay_names = ["Parcels"]                     # will feed GroupedLayerControl
-if st.session_state.get("show_flood"):
+# Overlays
+if st.session_state["show_flood"]:
     folium.raster_layers.WmsTileLayer(
-        url=FLOOD_WMS, layers="0",
-        name="Flood Hazard", transparent=True,
-        fmt="image/png", attr="© QRA").add_to(m)
-    overlay_names.append("Flood Hazard")
+        url=FLOOD_WMS, layers="0", name="Flood Hazard",
+        transparent=True, fmt="image/png", attr="© QRA").add_to(m)
 
 # Parcels
 parcel_group = folium.FeatureGroup(name="Parcels", show=True).add_to(m)
 bounds=[]
-if "geoms" in st.session_state and st.session_state["geoms"]:
-    s=st.session_state["style"]
-    sty=lambda _:{'fillColor':s['fill'],'color':s['line'],
-                  'weight':s['w'],'fillOpacity':s['op']/100}
+if "geoms" in st.session_state:
+    s=st.session_state.get("style", {})
+    sty=lambda _:{'fillColor':s.get('fill','#ff6600'),
+                  'color':s.get('line','#2e2e2e'),
+                  'weight':s.get('w',1.2),
+                  'fillOpacity':s.get('op',70)/100}
     for lp,g in st.session_state["geoms"].items():
         folium.GeoJson(mapping(g),name=lp,
                        style_function=sty).add_child(folium.Popup(lp)).add_to(parcel_group)
@@ -157,12 +170,10 @@ if "geoms" in st.session_state and st.session_state["geoms"]:
         maxx=max(b[2] for b in bounds); maxy=max(b[3] for b in bounds)
         m.fit_bounds([[miny,minx],[maxy,maxx]])
 
-folium.LayerControl(position="topright", collapsed=False).add_to(m)
-
 st_folium(m, height=700, use_container_width=True, key="main_map")
 
-# ─── Tab: Downloads ────────────────────────────────────────────────
-if choice == "Downloads":
+# ─── Tab: Downloads ────────────────────────────────────────
+if tab == "Downloads":
     st.sidebar.subheader("Export")
     if "geoms" in st.session_state and st.session_state["geoms"]:
         if st.sidebar.button("💾 Generate KML", use_container_width=True):
@@ -173,15 +184,14 @@ if choice == "Downloads":
             for lp,geom in geoms.items():
                 polys=[geom] if isinstance(geom,Polygon) else list(geom.geoms)
                 for idx,poly in enumerate(polys,1):
-                    area_ha=abs(geod.geometry_area_perimeter(poly)[0])/1e4
+                    area_ha=abs(Geod(ellps="WGS84").geometry_area_perimeter(poly)[0])/1e4
                     name=f"{lp} ({idx})" if len(polys)>1 else lp
                     desc=f"Lot/Plan: {lp}<br>Area: {area_ha:,.2f} ha"
                     p=root.newpolygon(name=name,description=desc,
                                       outerboundaryis=list(poly.exterior.coords))
                     for ring in poly.interiors:
                         p.innerboundaryis.append(list(ring.coords))
-                    p.style.polystyle.color=fk
-                    p.style.linestyle.color=lk
+                    p.style.polystyle.color=fk; p.style.linestyle.color=lk
                     p.style.linestyle.width=float(s["w"])
 
             st.sidebar.download_button("Save KML",
