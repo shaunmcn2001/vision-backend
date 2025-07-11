@@ -1,0 +1,23 @@
+basemaps:
+  - name: OpenStreetMap
+    type: tile
+    url: https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png
+    attr: © OpenStreetMap
+
+  - name: Esri Imagery
+    type: tile
+    url: https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}
+    attr: © Esri
+
+  - name: Esri Topo
+    type: tile
+    url: https://services.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}
+    attr: © Esri
+
+overlays:
+  - name: Flood Hazard
+    type: wms
+    url: https://qrospatial.information.qld.gov.au/services/opendata/qra/FloodHazards/MapServer/WMSServer
+    layers: 0
+    fmt: image/png
+    attr: © QRA
