@@ -134,23 +134,50 @@ folium.LayerControl(position="topright", collapsed=False).add_to(m)
 st_folium(m, height=700, use_container_width=True, key="main_map")
 
 # ─── Download KML ────────────────────────────────────────────────────
-if ("geoms" in st.session_state and st.session_state["geoms"]
-    and st.sidebar.button("📥 Download KML", use_container_width=True)):
-    s, kml = st.session_state["style"], simplekml.Kml()
-    fld = kml.newfolder(name=s["folder"])
-    fill_k, line_k = kml_colour(s["fill"], s["op"]), kml_colour(s["line"], 100)
+# ─── Download KML ─────────────────────────────────────────
+if (
+    "geoms" in st.session_state
+    and st.session_state["geoms"]
+    and st.sidebar.button("📥 Download KML", use_container_width=True)
+):
+    from shapely.geometry import Polygon, MultiPolygon
+    from shapely.geometry.polygon import orient
 
-    for lp, g in st.session_state["geoms"].items():
-        p = fld.newpolygon(name=lp,
-                           outerboundaryis=mapping(g)["coordinates"][0])
-        p.style.polystyle.color = fill_k
-        p.style.linestyle.color = line_k
-        p.style.linestyle.width = float(s["w"])
+    sty   = st.session_state["style"]
+    kml   = simplekml.Kml()
+    root  = kml.newfolder(name=sty["folder"])
+    fillk = kml_colour(sty["fill"], sty["op"])
+    linek = kml_colour(sty["line"], 100)
+
+    for lp, geom in st.session_state["geoms"].items():
+        # Ensure CCW orientation (KML spec)
+        geom = orient(geom, sign=1.0)
+
+        if isinstance(geom, Polygon):
+            parts = [geom]
+        else:                              # MultiPolygon
+            parts = list(geom.geoms)
+
+        lp_folder = root.newfolder(name=lp) if len(parts) > 1 else root
+
+        for idx, poly in enumerate(parts, start=1):
+            name = f"{lp} ({idx})" if len(parts) > 1 else lp
+            p = lp_folder.newpolygon(
+                name=name,
+                outerboundaryis=[(x, y) for x, y in poly.exterior.coords],
+            )
+            # holes (if any)
+            for ring in poly.interiors:
+                p.innerboundaryis.append([(x, y) for x, y in ring.coords])
+
+            p.style.polystyle.color = fillk
+            p.style.linestyle.color = linek
+            p.style.linestyle.width = float(sty["w"])
 
     st.sidebar.download_button(
         "Save KML",
-        io.BytesIO(kml.kml().encode()).getvalue(),
-        "parcels.kml",
-        "application/vnd.google-earth.kml+xml",
-        use_container_width=True
+        data=io.BytesIO(kml.kml().encode()).getvalue(),
+        file_name="parcels.kml",
+        mime="application/vnd.google-earth.kml+xml",
+        use_container_width=True,
     )
