@@ -8,7 +8,7 @@ from shapely.geometry import shape, mapping, Polygon
 from shapely.ops import unary_union, transform
 from pyproj import Transformer, Geod
 
-# ─── Page & theme ──────────────────────────────────────────────
+# ─── Page & base theme ──────────────────────────────────────────────
 st.set_page_config(page_title="Lot/Plan → KML",
                    page_icon="📍",
                    layout="wide",
@@ -26,7 +26,7 @@ div[data-testid='stSidebar']{width:320px;}
 #main_map iframe{border-radius:12px;box-shadow:0 4px 14px rgba(0,0,0,0.25);}
 </style>""", unsafe_allow_html=True)
 
-# ─── Constants ─────────────────────────────────────────────────
+# ─── Data sources ───────────────────────────────────────────────────
 QLD_URL = ("https://spatial-gis.information.qld.gov.au/arcgis/rest/services/"
            "PlanningCadastre/LandParcelPropertyFramework/MapServer/4/query")
 NSW_URL = ("https://maps.six.nsw.gov.au/arcgis/rest/services/public/"
@@ -36,7 +36,7 @@ FLOOD_WMS = ("https://qrospatial.information.qld.gov.au/services/opendata/"
 
 geod = Geod(ellps="WGS84")
 
-# ─── Helper: fetch & merge parcels ─────────────────────────────
+# ─── Helper: fetch & merge parcels ──────────────────────────────────
 def fetch_geoms(lotplans):
     grouped, missing = defaultdict(list), []
     is_qld = lambda lp: bool(re.match(r"^\d+[A-Z]{1,3}\d+$", lp, re.I))
@@ -73,23 +73,22 @@ def kml_colour(hex_rgb, pct):
     a = int(round(255*pct/100))
     return f"{a:02x}{b}{g}{r}"
 
-# ─── Sidebar icon menu ────────────────────────────────────────
+# ─── Sidebar icon menu ──────────────────────────────────────────────
 with st.sidebar:
     choice = option_menu(
         None,
         ["Query","Layers","Downloads"],
         icons=["search","layers","download"],
-        menu_icon="cast",
         default_index=0,
         styles={
             "container":{"padding":"0!important","background-color":"#262730"},
             "icon":{"color":"white","font-size":"20px"},
-            "nav-link":{"font-size":"14px","text-align":"left","margin":"0"},
+            "nav-link":{"font-size":"14px","margin":"0"},
             "nav-link-selected":{"background-color":"#ff6600"},
-        }
+        },
     )
 
-# ─── --- TAB 1 : QUERY ------------------------------------------------
+# ─── Tab: Query ─────────────────────────────────────────────────────
 if choice == "Query":
     st.sidebar.subheader("Lot/Plan search")
     lot_text = st.sidebar.text_area("IDs", height=140,
@@ -105,96 +104,76 @@ if choice == "Query":
         ids = [i.strip() for i in lot_text.splitlines() if i.strip()]
         with st.spinner("Fetching parcels…"):
             geoms, missing = fetch_geoms(ids)
+
         if missing: st.sidebar.warning("Not found: "+", ".join(missing))
         st.sidebar.info(f"Loaded {len(geoms)} parcel{'s' if len(geoms)!=1 else ''}.")
         st.session_state["geoms"] = geoms
         st.session_state["style"] = dict(fill=fill_hex, op=fill_op,
                                          line=line_hex, w=line_w, folder=folder)
 
-# ─── --- TAB 2 : LAYERS ----------------------------------------------
+# ─── Tab: Layers ────────────────────────────────────────────────────
 if choice == "Layers":
     st.sidebar.subheader("Toggle overlays")
-    show_flood = st.sidebar.checkbox("QLD Flood Hazard", value=False)
+    show_flood = st.sidebar.checkbox("QLD Flood Hazard",
+                                     value=st.session_state.get("show_flood", False))
+    st.session_state["show_flood"] = show_flood
 
-# keep style selections in session for Downloads tab
-if "style" not in st.session_state:
-    st.session_state["style"] = dict(fill="#ff6600", op=70,
-                                     line="#2e2e2e", w=1.2, folder="Parcels")
-# ­­­ after you finish adding layers ­­­
-    overlay_names = ["Parcels"]
-    if choice == "Layers" and show_flood:
-        overlay_names.append("Flood Hazard")      # only if layer exists
-    
-    GroupedLayerControl(
-        groups={
-            "Basemaps": ["OpenStreetMap", "Esri Imagery", "Esri Topo"],
-            "Overlays": overlay_names
-        },
-        collapsed=False,
-        position="topright"
-    ).add_to(m)
-
-# ─── Build map (always) ----------------------------------------------
+# ─── Build map (runs every draw) ────────────────────────────────────
 m = folium.Map(location=[-25,145], zoom_start=5,
                control_scale=True, width="100%", height="100vh")
 
-# basemaps
+# Basemaps
 folium.TileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
                  name="OpenStreetMap", attr="© OpenStreetMap").add_to(m)
-folium.TileLayer(
-    "https://services.arcgisonline.com/ArcGIS/rest/services/"
-    "World_Imagery/MapServer/tile/{z}/{y}/{x}",
-    name="Esri Imagery", attr="© Esri").add_to(m)
-folium.TileLayer(
-    "https://services.arcgisonline.com/ArcGIS/rest/services/"
-    "World_Topo_Map/MapServer/tile/{z}/{y}/{x}",
-    name="Esri Topo", attr="© Esri").add_to(m)
+folium.TileLayer("https://services.arcgisonline.com/arcgis/rest/services/"
+                 "World_Imagery/MapServer/tile/{z}/{y}/{x}",
+                 name="Esri Imagery", attr="© Esri").add_to(m)
+folium.TileLayer("https://services.arcgisonline.com/arcgis/rest/services/"
+                 "World_Topo_Map/MapServer/tile/{z}/{y}/{x}",
+                 name="Esri Topo", attr="© Esri").add_to(m)
 
-# flood overlay
-if choice=="Layers" and 'show_flood' in locals() and show_flood:
+# Optional flood layer
+overlay_names = ["Parcels"]                     # will feed GroupedLayerControl
+if st.session_state.get("show_flood"):
     folium.raster_layers.WmsTileLayer(
-        url=FLOOD_WMS,
-        layers="0",
-        name="Flood Hazard",
-        transparent=True,
-        fmt="image/png",
-        attr="© QRA"
-    ).add_to(m)
+        url=FLOOD_WMS, layers="0",
+        name="Flood Hazard", transparent=True,
+        fmt="image/png", attr="© QRA").add_to(m)
+    overlay_names.append("Flood Hazard")
 
-# parcel group
+# Parcels
 parcel_group = folium.FeatureGroup(name="Parcels", show=True).add_to(m)
 bounds=[]
 if "geoms" in st.session_state and st.session_state["geoms"]:
-    s = st.session_state["style"]
+    s=st.session_state["style"]
     sty=lambda _:{'fillColor':s['fill'],'color':s['line'],
                   'weight':s['w'],'fillOpacity':s['op']/100}
     for lp,g in st.session_state["geoms"].items():
         folium.GeoJson(mapping(g),name=lp,
                        style_function=sty).add_child(folium.Popup(lp)).add_to(parcel_group)
         bounds.append(g.bounds)
-    if bounds:  # auto zoom
+    if bounds:
         minx=min(b[0] for b in bounds); miny=min(b[1] for b in bounds)
         maxx=max(b[2] for b in bounds); maxy=max(b[3] for b in bounds)
         m.fit_bounds([[miny,minx],[maxy,maxx]])
 
+# Grouped layer switcher (dynamic overlays)
 GroupedLayerControl(
-    groups={
-        "Basemaps":["OpenStreetMap","Esri Imagery","Esri Topo"],
-        "Overlays":["Parcels","Flood Hazard"]
-    },
+    groups={"Basemaps":["OpenStreetMap","Esri Imagery","Esri Topo"],
+            "Overlays": overlay_names},
     collapsed=False,
     position="topright"
 ).add_to(m)
 
 st_folium(m, height=700, use_container_width=True, key="main_map")
 
-# ─── --- TAB 3 : DOWNLOADS -------------------------------------------
+# ─── Tab: Downloads ────────────────────────────────────────────────
 if choice == "Downloads":
-    st.sidebar.subheader("Export data")
-    if ("geoms" in st.session_state and st.session_state["geoms"]):
+    st.sidebar.subheader("Export")
+    if "geoms" in st.session_state and st.session_state["geoms"]:
         if st.sidebar.button("💾 Generate KML", use_container_width=True):
-            geoms = st.session_state["geoms"]; s = st.session_state["style"]
-            kml = simplekml.Kml(); root=kml.newfolder(name=s["folder"])
+            s=st.session_state["style"]; geoms=st.session_state["geoms"]
+            kml=simplekml.Kml(); root=kml.newfolder(name=s["folder"])
             fk,lk=kml_colour(s["fill"],s["op"]),kml_colour(s["line"],100)
 
             for lp,geom in geoms.items():
@@ -207,15 +186,13 @@ if choice == "Downloads":
                                       outerboundaryis=list(poly.exterior.coords))
                     for ring in poly.interiors:
                         p.innerboundaryis.append(list(ring.coords))
-                    p.style.polystyle.color=fk; p.style.linestyle.color=lk
+                    p.style.polystyle.color=fk
+                    p.style.linestyle.color=lk
                     p.style.linestyle.width=float(s["w"])
 
-            st.sidebar.download_button(
-                "Save KML",
+            st.sidebar.download_button("Save KML",
                 io.BytesIO(kml.kml().encode()).getvalue(),
-                "parcels.kml",
-                "application/vnd.google-earth.kml+xml",
-                use_container_width=True,
-            )
+                "parcels.kml","application/vnd.google-earth.kml+xml",
+                use_container_width=True)
     else:
         st.sidebar.info("Load parcels in the Query tab first.")
