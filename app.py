@@ -120,6 +120,19 @@ if choice == "Layers":
 if "style" not in st.session_state:
     st.session_state["style"] = dict(fill="#ff6600", op=70,
                                      line="#2e2e2e", w=1.2, folder="Parcels")
+# ­­­ after you finish adding layers ­­­
+    overlay_names = ["Parcels"]
+    if choice == "Layers" and show_flood:
+        overlay_names.append("Flood Hazard")      # only if layer exists
+    
+    GroupedLayerControl(
+        groups={
+            "Basemaps": ["OpenStreetMap", "Esri Imagery", "Esri Topo"],
+            "Overlays": overlay_names
+        },
+        collapsed=False,
+        position="topright"
+    ).add_to(m)
 
 # ─── Build map (always) ----------------------------------------------
 m = folium.Map(location=[-25,145], zoom_start=5,
