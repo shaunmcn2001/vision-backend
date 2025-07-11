@@ -157,13 +157,7 @@ if "geoms" in st.session_state and st.session_state["geoms"]:
         maxx=max(b[2] for b in bounds); maxy=max(b[3] for b in bounds)
         m.fit_bounds([[miny,minx],[maxy,maxx]])
 
-# Grouped layer switcher (dynamic overlays)
-GroupedLayerControl(
-    groups={"Basemaps":["OpenStreetMap","Esri Imagery","Esri Topo"],
-            "Overlays": overlay_names},
-    collapsed=False,
-    position="topright"
-).add_to(m)
+folium.LayerControl(position="topright", collapsed=False).add_to(m)
 
 st_folium(m, height=700, use_container_width=True, key="main_map")
 
