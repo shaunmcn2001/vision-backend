@@ -14,7 +14,7 @@ Streamlit one-page app for parcel lookup & export.
 import io, re, yaml, pathlib, requests, tempfile, zipfile, uuid, shutil
 import streamlit as st
 from streamlit_option_menu import option_menu
-from streamlit_folium import st_folium, get_last_msg
+from streamlit_folium import st_folium
 from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode
 
 import folium, simplekml, geopandas as gpd, pandas as pd
@@ -207,7 +207,7 @@ if bounds:
 
 # Render map
 st_folium(map_obj, height=550, use_container_width=True, key="map")
-
+js = get_last_msg()
 # ═══════════════════ RESULTS TABLE + ACTIONS ═════════════════════════════
 if "table" in st.session_state and not st.session_state["table"].empty:
     st.subheader("Query Results")
