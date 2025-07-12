@@ -255,7 +255,7 @@ if "table" in st.session_state and not st.session_state["table"].empty:
     )
 
     # Persist selection for highlight
-    st.session_state["_sel"] = [r["Lot/Plan"] for r in grid["selected_rows"]]
+    st.session_state["_sel"] = [r["Lot/Plan"] for r in grid.selected_rows]
 
     # Export-ALL bar
     with st.expander("Export ALL", expanded=True):
@@ -299,7 +299,7 @@ if "table" in st.session_state and not st.session_state["table"].empty:
 
     # Handle context-menu events
     if js and js.get("type") in {"zoom", "kml"}:
-        ids = [r["Lot/Plan"] for r in grid["selected_rows"]] or st.session_state.get("_sel", [])
+        ids = [r["Lot/Plan"] for r in grid.selected_rows] or st.session_state.get("_sel", [])
         geoms = [st.session_state["parcels"][i]["geom"] for i in ids]
 
         if js["type"] == "zoom":
