@@ -31,8 +31,8 @@ st.markdown(
     unsafe_allow_html=True
 )
 with st.sidebar:
-    tab = option_menu(None, ["Query", "Layers", "Downloads"],
-                      icons=["search", "layers", "download"],
+    tab = option_menu(None, ["Query", "Layers"],
+                      icons=["search", "layers"],
                       default_index=0,
                       styles={"container":{"padding":"0","background":"#262730"},
                               "nav-link-selected":{"background":"#ff6600"}})
