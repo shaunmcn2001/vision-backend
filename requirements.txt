@@ -1,13 +1,12 @@
- streamlit==1.18.1
- streamlit-option-menu==0.3.6
--streamlit-folium==0.17.0
-+streamlit-folium>=0.18.0
- st-aggrid==0.3.2
- folium==0.16.0
- simplekml==1.4.1
- geopandas==0.14.4
-+pandas==2.0.3
-+pyyaml>=6.0
-+shapely>=2.0.1
- pyproj==3.6.1
-+uuid
+streamlit==1.18.1
+streamlit-option-menu==0.3.6
+streamlit-folium>=0.18.0
+st-aggrid==0.3.2
+folium==0.16.0
+simplekml==1.4.1
+geopandas==0.14.4
+pandas==2.0.3
+pyyaml>=6.0
+shapely>=2.0.1
+pyproj==3.6.1
+uuid
