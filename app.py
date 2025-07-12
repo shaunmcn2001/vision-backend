@@ -3,12 +3,16 @@ from collections import defaultdict
 from streamlit_option_menu import option_menu
 from streamlit_folium import st_folium
 import folium, simplekml, geopandas as gpd
+import fiona   # ← direct import for driver patch
 from azure.storage.blob import BlobClient
 from shapely.geometry import shape, mapping, Polygon
 from shapely.ops import unary_union, transform
 from pyproj import Transformer, Geod
 
-# ── registry helpers ──────────────────────────────────────────
+# ── enable KML read-write in Fiona ───────────────────────────
+fiona.drvsupport.supported_drivers["KML"] = "rw"
+
+# ── registry helpers ─────────────────────────────────────────
 REG_PATH = pathlib.Path("layers.yaml")
 @st.cache_data
 def load_registry():
@@ -28,7 +32,6 @@ def upload_to_azure(uploaded_file) -> str:
     raw = pathlib.Path(tmp_dir) / uploaded_file.name
     raw.write_bytes(uploaded_file.read())
 
-    gpd.io.file.fiona.drvsupport.supported_drivers["KML"] = "rw"
     if raw.suffix.lower() == ".zip":
         with zipfile.ZipFile(raw) as z: z.extractall(tmp_dir)
         shp = next(pathlib.Path(tmp_dir).glob("*.shp"))
@@ -48,6 +51,7 @@ def upload_to_azure(uploaded_file) -> str:
     bc.upload_blob(geo.read_bytes(), overwrite=True,
                    content_type="application/geo+json")
     return bc.url if sas == "" else f"{bc.url}?{sas}"
+
 
 # ── Streamlit setup ──────────────────────────────────────────
 st.set_page_config(page_title="Lot/Plan → KML", page_icon="📍",
