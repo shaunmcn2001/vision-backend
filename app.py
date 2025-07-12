@@ -1,4 +1,4 @@
-# app.py  –  LAWD Parcel Toolkit  (2025-07-12)
+# app.py  –  LAWD Parcel Toolkit  (public-read container; write-only SAS)
 
 import io, re, json, yaml, pathlib, uuid, tempfile, zipfile, requests, streamlit as st
 from collections import defaultdict
@@ -10,7 +10,7 @@ from shapely.geometry import shape, mapping, Polygon
 from shapely.ops import unary_union, transform
 from pyproj import Transformer, Geod
 
-# ───── enable KML driver for Fiona ──────────────────────────────────
+# ───── enable KML driver ────────────────────────────────────────────
 fiona.drvsupport.supported_drivers["KML"] = "rw"
 
 # ───── YAML helpers (basemaps, overlays, databases) ────────────────
@@ -21,94 +21,67 @@ def load_static():
     cfg.setdefault("overlays",  [])
     cfg.setdefault("databases", [])
     return cfg
-def save_static(cfg):
-    REG_PATH.write_text(yaml.safe_dump(cfg, sort_keys=False))
-
+def save_static(cfg): REG_PATH.write_text(yaml.safe_dump(cfg, sort_keys=False))
 static_cfg = load_static()
 
-# ───── Azure manifest helpers (index.json) ─────────────────────────
+# ───── Azure manifest helpers ───────────────────────────────────────
 def index_blob():
     acct = st.secrets["AZ_ACCOUNT"]; cont = st.secrets["AZ_CONTAINER"]
     sas  = st.secrets.get("AZ_SAS", "")
     return BlobClient(account_url=f"https://{acct}.blob.core.windows.net",
                       container_name=cont, blob_name="index.json",
                       credential=sas or None)
-
 @st.cache_data
 def load_dynamic():
-    try:
-        data = index_blob().download_blob().readall().decode()
-        return json.loads(data)
-    except Exception:
-        return []
-
+    try:  return json.loads(index_blob().download_blob().readall().decode())
+    except Exception: return []
 def save_dynamic(lst):
-    index_blob().upload_blob(json.dumps(lst).encode(),
-                             overwrite=True,
-                             content_type="application/json")
-    st.cache_data.clear()
-
+    index_blob().upload_blob(json.dumps(lst).encode(), overwrite=True,
+                             content_type="application/json"); st.cache_data.clear()
 dynamic_cfg = load_dynamic()
 
-# ───── glass-dark overlay ──────────────────────────────────────────
+# ───── glass-dark overlay ───────────────────────────────────────────
 def show_overlay(msg: str, pct: int | None):
-    ph = st.session_state.get("_overlay_ph")
-    if pct is None:
-        if ph: ph.empty()
-        st.session_state["_overlay_ph"] = None
-        return
-    html = f"""
-    <style>
-    .ov{{position:fixed;inset:0;z-index:9999;
-         backdrop-filter:blur(4px) brightness(.35);
-         display:flex;flex-direction:column;
-         justify-content:center;align-items:center}}
+    ph = st.session_state.get("_ov");                         # placeholder key
+    if pct is None:                                           # clear
+        if ph: ph.empty(); st.session_state["_ov"]=None; return
+    html=f"""<style>
+    .ov{{position:fixed;inset:0;z-index:9999;backdrop-filter:blur(4px)brightness(.35);
+    display:flex;flex-direction:column;justify-content:center;align-items:center}}
     .bar{{width:60%;max-width:400px;height:10px;background:#555;border-radius:6px;
-          overflow:hidden;box-shadow:0 0 10px #000 inset}}
-    .bar>div{{width:{pct}%;height:100%;
-              background:linear-gradient(90deg,#ff6600 0%,#ffaa00 100%);
-              transition:width .25s}}
-    .txt{{color:#fff;font-weight:600;margin-top:18px}}
-    </style>
+    overflow:hidden;box-shadow:0 0 10px #000 inset}}
+    .bar>div{{width:{pct}% ;height:100%;
+    background:linear-gradient(90deg,#ff6600 0%,#ffaa00 100%);transition:width .25s}}
+    .txt{{color:#fff;font-weight:600;margin-top:18px}}</style>
     <div class='ov'><div class='bar'><div></div></div><div class='txt'>{msg}</div></div>"""
-    if not ph:
-        ph = st.empty()
-        st.session_state["_overlay_ph"] = ph
+    if not ph: ph=st.empty(); st.session_state["_ov"]=ph
     ph.markdown(html, unsafe_allow_html=True)
 
-# ───── upload vector → Azure blob ──────────────────────────────────
+# ───── upload vector → Azure blob (SAS for PUT only) ────────────────
 def upload_vector_blob(uploaded_file):
     acct = st.secrets["AZ_ACCOUNT"]; cont = st.secrets["AZ_CONTAINER"]
     sas  = st.secrets.get("AZ_SAS", "")
-    tmp = tempfile.mkdtemp()
-    raw = pathlib.Path(tmp) / uploaded_file.name
+    tmp  = tempfile.mkdtemp(); raw = pathlib.Path(tmp)/uploaded_file.name
     raw.write_bytes(uploaded_file.read())
 
-    if raw.suffix.lower() == ".zip":
+    if raw.suffix.lower()==".zip":
         with zipfile.ZipFile(raw) as z: z.extractall(tmp)
-        shp = next(pathlib.Path(tmp).glob("*.shp"))
-        gdf = gpd.read_file(shp)
+        shp = next(pathlib.Path(tmp).glob("*.shp")); gdf=gpd.read_file(shp)
     else:
-        gdf = gpd.read_file(raw)
+        gdf=gpd.read_file(raw)
+    if gdf.crs and gdf.crs.to_epsg()!=4326: gdf=gdf.to_crs(4326)
 
-    if gdf.crs and gdf.crs.to_epsg() != 4326:
-        gdf = gdf.to_crs(4326)
-
-    uid = uuid.uuid4().hex
-    geo = pathlib.Path(tmp) / f"{uid}.geojson"
+    uid=uuid.uuid4().hex; geo=pathlib.Path(tmp)/f"{uid}.geojson"
     gdf.to_file(geo, driver="GeoJSON")
 
-    bc = BlobClient(account_url=f"https://{acct}.blob.core.windows.net",
-                    container_name=cont, blob_name=geo.name,
-                    credential=sas or None)
+    bc=BlobClient(account_url=f"https://{acct}.blob.core.windows.net",
+                  container_name=cont, blob_name=geo.name,
+                  credential=sas or None)
     bc.upload_blob(geo.read_bytes(), overwrite=True,
                    content_type="application/geo+json")
+    return bc.url                 # public-read → no token in URL
 
-    token = sas.lstrip("?").replace("sr=c", "sr=b") if sas else ""
-    url = f"{bc.url}?{token}" if token else bc.url
-    return url, uid
-
-# ───── Streamlit page setup ────────────────────────────────────────
+# ───── Streamlit page setup ─────────────────────────────────────────
 st.set_page_config(page_title="Lot/Plan → KML", page_icon="📍",
                    layout="wide", initial_sidebar_state="collapsed")
 st.markdown("<div style='background:#ff6600;color:white;font-size:20px;"
@@ -118,254 +91,185 @@ st.markdown("<style>div[data-testid='stSidebar']{width:320px}"
             "#main_map iframe{border-radius:12px;box-shadow:0 4px 14px rgba(0,0,0,.25)}"
             "</style>", unsafe_allow_html=True)
 
-# side nav
 with st.sidebar:
-    tab = option_menu(None, ["Query", "Layers", "Downloads"],
-                      icons=["search", "layers", "download"],
-                      default_index=0,
-                      styles={"container":{"padding":"0","background":"#262730"},
-                              "nav-link-selected":{"background":"#ff6600"}})
+    tab=option_menu(None,["Query","Layers","Downloads"],
+                    icons=["search","layers","download"],default_index=0,
+                    styles={"container":{"padding":"0","background":"#262730"},
+                            "nav-link-selected":{"background":"#ff6600"}})
 
-# default session states
 if static_cfg["basemaps"]:
     st.session_state.setdefault("basemap", static_cfg["basemaps"][0]["name"])
-st.session_state.setdefault("overlay_state",
-    {ov["name"]: False for ov in static_cfg["overlays"]})
-st.session_state.setdefault("db_state",
-    {db["name"]: False for db in static_cfg["databases"]})
-st.session_state.setdefault("dyn_state",
-    {d["id"]: False for d in dynamic_cfg})
+st.session_state.setdefault("overlay_state",{o["name"]:False for o in static_cfg["overlays"]})
+st.session_state.setdefault("db_state"     ,{d["name"]:False for d in static_cfg["databases"]})
+st.session_state.setdefault("dyn_state"    ,{d["id"]  :False for d in dynamic_cfg})
 
-# ───── cadastre query helpers ──────────────────────────────────────
-QLD_URL = ("https://spatial-gis.information.qld.gov.au/arcgis/rest/services/"
-           "PlanningCadastre/LandParcelPropertyFramework/MapServer/4/query")
-NSW_URL = ("https://maps.six.nsw.gov.au/arcgis/rest/services/public/"
-           "NSW_Cadastre/MapServer/9/query")
-geod = Geod(ellps="WGS84")
-def fetch_geoms(ids):
-    grouped, miss = defaultdict(list), []
-    is_qld = lambda lp: bool(re.match(r"^\d+[A-Z]{1,3}\d+$", lp, re.I))
+# ───── cadastre helpers ─────────────────────────────────────────────
+QLD=("https://spatial-gis.information.qld.gov.au/arcgis/rest/services/"
+     "PlanningCadastre/LandParcelPropertyFramework/MapServer/4/query")
+NSW=("https://maps.six.nsw.gov.au/arcgis/rest/services/public/"
+     "NSW_Cadastre/MapServer/9/query")
+geod=Geod(ellps="WGS84")
+def fetch(ids):
+    grp,miss=defaultdict(list),[]
     for lp in ids:
-        url,fld = (QLD_URL, "lotplan") if is_qld(lp) else (NSW_URL, "lotidstring")
+        url,fld=(QLD,"lotplan") if re.match(r"^\d+[A-Z]{1,3}\d+$",lp,re.I) else (NSW,"lotidstring")
         try:
-            js = requests.get(url, params={"where":f"{fld}='{lp}'",
-                                           "returnGeometry":"true","f":"geojson"},
-                              timeout=12).json()
-            feats = js.get("features", [])
-            if not feats:
-                miss.append(lp); continue
-            wkid = feats[0]["geometry"].get("spatialReference",{}).get("wkid",4326)
-            tfm  = (Transformer.from_crs(wkid,4326,always_xy=True).transform
-                    if wkid != 4326 else None)
-            for ft in feats:
-                g = shape(ft["geometry"])
-                grouped[lp].append(transform(tfm,g) if tfm else g)
-        except Exception:
-            miss.append(lp)
-    return {lp: unary_union(gs) for lp,gs in grouped.items()}, miss
-def kml_colour(hex_rgb,pct):
-    r,g,b=hex_rgb[1:3],hex_rgb[3:5],hex_rgb[5:7]; a=int(round(255*pct/100))
-    return f"{a:02x}{b}{g}{r}"
+            js=requests.get(url,params={"where":f"{fld}='{lp}'","returnGeometry":"true","f":"geojson"},timeout=12).json()
+            fs=js.get("features",[]);  wkid=fs[0]["geometry"].get("spatialReference",{}).get("wkid",4326) if fs else 4326
+            tfm=Transformer.from_crs(wkid,4326,always_xy=True).transform if wkid!=4326 else None
+            if not fs: miss.append(lp); continue
+            for ft in fs: grp[lp].append(transform(tfm,shape(ft["geometry"])) if tfm else shape(ft["geometry"]))
+        except Exception: miss.append(lp)
+    return {lp:unary_union(gs) for lp,gs in grp.items()}, miss
+kc=lambda h,p: f"{int(round(255*p/100)):02x}{h[5:7]}{h[3:5]}{h[1:3]}"
 
-# ───── TAB: Query ──────────────────────────────────────────────────
-if tab == "Query":
-    st.sidebar.subheader("Lot/Plan search")
-    ids_txt = st.sidebar.text_area("IDs", height=140,
-                                   placeholder="6RP702264\n5//DP123456")
-    fill_hex = st.sidebar.color_picker("Fill colour", "#ff6600")
-    fill_op  = st.sidebar.number_input("Fill opacity %", 0, 100, 70)
-    line_hex = st.sidebar.color_picker("Outline colour", "#2e2e2e")
-    line_w   = st.sidebar.number_input("Outline width px", .5, 6., 1.2, .1)
-    folder   = st.sidebar.text_input("Folder name in KML", "Parcels")
-    if st.sidebar.button("🔍 Search", use_container_width=True) and ids_txt.strip():
+# ───── TAB: Query ───────────────────────────────────────────────────
+if tab=="Query":
+    ids_txt=st.sidebar.text_area("IDs",height=140,placeholder="6RP702264\n5//DP123456")
+    fx=st.sidebar.color_picker("Fill","#ff6600");  fo=st.sidebar.number_input("Fill opacity %",0,100,70)
+    lx=st.sidebar.color_picker("Outline","#2e2e2e"); lw=st.sidebar.number_input("Outline px",.5,6.,1.2,.1)
+    folder=st.sidebar.text_input("Folder name","Parcels")
+    if st.sidebar.button("🔍 Search") and ids_txt.strip():
         ids=[i.strip() for i in ids_txt.splitlines() if i.strip()]
-        with st.spinner("Fetching parcels…"):
-            geoms, miss = fetch_geoms(ids)
-        if miss: st.sidebar.warning("Not found: " + ", ".join(miss))
-        st.session_state["geoms"] = geoms
-        st.session_state["style"] = dict(fill=fill_hex, op=fill_op,
-                                         line=line_hex, w=line_w, folder=folder)
-        st.sidebar.info(f"Loaded {len(geoms)} parcel"
-                        f"{'' if len(geoms)==1 else 's'}.")
+        with st.spinner("Fetching parcels…"): geoms,miss=fetch(ids)
+        if miss: st.sidebar.warning("Not found: "+", ".join(miss))
+        st.session_state["geoms"]=geoms; st.session_state["style"]=dict(fill=fx,op=fo,line=lx,w=lw,folder=folder)
+        st.sidebar.info(f"Loaded {len(geoms)} parcel{'s'*(len(geoms)!=1)}.")
 
 # ───── TAB: Layers ─────────────────────────────────────────────────
-if tab == "Layers":
-    # Basemap
-    st.sidebar.subheader("Basemap")
+if tab=="Layers":
+    # basemap
     if static_cfg["basemaps"]:
+        st.sidebar.subheader("Basemap")
         bnames=[b["name"] for b in static_cfg["basemaps"]]
-        st.session_state["basemap"] = st.sidebar.radio(
-            "", bnames, index=bnames.index(st.session_state["basemap"]))
+        st.session_state["basemap"]=st.sidebar.radio("",bnames,
+            index=bnames.index(st.session_state["basemap"]))
 
-    # Static overlays
+    # overlays
     st.sidebar.subheader("Static overlays")
     for ov in static_cfg["overlays"]:
-        cur = st.session_state["overlay_state"].get(ov["name"], False)
-        st.session_state["overlay_state"][ov["name"]] = st.sidebar.checkbox(
-            ov["name"], value=cur)
+        st.session_state["overlay_state"][ov["name"]]=st.sidebar.checkbox(
+            ov["name"], value=st.session_state["overlay_state"][ov["name"]])
 
-    # Databases
+    # databases
     st.sidebar.subheader("Databases")
     for db in static_cfg["databases"]:
-        cur = st.session_state["db_state"].get(db["name"], False)
-        st.session_state["db_state"][db["name"]] = st.sidebar.checkbox(
-            db["name"], value=cur)
+        st.session_state["db_state"][db["name"]]=st.sidebar.checkbox(
+            db["name"], value=st.session_state["db_state"][db["name"]])
 
     with st.sidebar.expander("➕ Add server layer"):
-        new_name  = st.text_input("Name")
-        new_url   = st.text_input("URL …")
-        new_type  = st.selectbox("Type", ["wms", "tile"])
-        new_layer = st.text_input("Layers (WMS only)")
-        new_attr  = st.text_input("Attribution", value="© Source")
-        if st.button("Add to database"):
-            if new_name and new_url:
-                static_cfg["databases"].append(
-                    {"name": new_name, "type": new_type, "url": new_url,
-                     "layers": new_layer, "attr": new_attr})
-                save_static(static_cfg)
-                st.rerun()            # inside event handler ✓
+        n=st.text_input("Name"); u=st.text_input("URL …"); t=st.selectbox("Type",["wms","tile"])
+        l=st.text_input("Layers (WMS only)"); a=st.text_input("Attribution","© Source")
+        if st.button("Add to database") and n and u:
+            static_cfg["databases"].append({"name":n,"type":t,"url":u,"layers":l,"attr":a})
+            save_static(static_cfg); st.rerun()
 
-    # My uploads
+    # uploads: load on demand
     st.sidebar.subheader("My uploads")
-    loaded_ids = [lid for lid,v in st.session_state["dyn_state"].items() if v]
-    loaded_layers = [d for d in dynamic_cfg if d["id"] in loaded_ids]
-    avail_layers  = [d for d in dynamic_cfg if d["id"] not in loaded_ids]
+    loaded=[d for d in dynamic_cfg if st.session_state["dyn_state"].get(d["id"])]
+    avail =[d for d in dynamic_cfg if not st.session_state["dyn_state"].get(d["id"])]
 
-    if loaded_layers:
-        for d in loaded_layers:
-            cur = st.session_state["dyn_state"][d["id"]]
-            st.session_state["dyn_state"][d["id"]] = st.sidebar.checkbox(
-                d["name"], value=cur, key=f"dyn_{d['id']}")
-    else:
-        st.sidebar.info("No uploads loaded.")
+    if loaded:
+        for d in loaded:
+            st.session_state["dyn_state"][d["id"]]=st.sidebar.checkbox(
+                d["name"], value=True, key=f"dyn_{d['id']}")
+    else: st.sidebar.info("No uploads loaded.")
 
-    if avail_layers:
-        sel_name = st.sidebar.selectbox("Add saved layer",
-                                        [d["name"] for d in avail_layers])
+    if avail:
+        sel=st.sidebar.selectbox("Add saved layer",[d["name"] for d in avail])
         if st.sidebar.button("Load layer"):
-            d = next(a for a in avail_layers if a["name"] == sel_name)
-            st.session_state["dyn_state"][d["id"]] = True
-            st.rerun()             # inside button handler ✓
-    else:
-        st.sidebar.caption("All saved layers are loaded.")
+            d=next(a for a in avail if a["name"]==sel)
+            st.session_state["dyn_state"][d["id"]]=True; st.rerun()
+    else: st.sidebar.caption("All saved layers are loaded.")
 
-    # upload new vector
+    # new upload
     st.sidebar.markdown("---")
     st.sidebar.markdown("### ⬆ Upload local vector")
-    up_file = st.sidebar.file_uploader(
-        "GeoJSON / KML / KMZ / Shapefile ZIP",
-        type=["geojson","json","kml","kmz","zip"])
-    up_name = st.sidebar.text_input("Display name")
-
+    up_file=st.sidebar.file_uploader("GeoJSON / KML / KMZ / Shapefile ZIP",
+                                     type=["geojson","json","kml","kmz","zip"])
+    up_name=st.sidebar.text_input("Display name")
     if st.sidebar.button("Save layer") and up_file and up_name:
         try:
             show_overlay("Uploading…",10)
-            url, uid = upload_vector_blob(up_file)
+            url,uid=upload_vector_blob(up_file)
             show_overlay("Updating list…",80)
             dynamic_cfg.append({"id":uid,"name":up_name,"url":url})
             save_dynamic(dynamic_cfg)
-            st.session_state["dyn_state"][uid] = True
-            show_overlay(None,None)
-            st.sidebar.success("Layer uploaded & loaded.")
-            st.rerun()            # inside event handler ✓
+            st.session_state["dyn_state"][uid]=True
+            show_overlay(None,None); st.sidebar.success("Layer uploaded & loaded."); st.rerun()
         except Exception as e:
-            show_overlay(None,None)
-            st.sidebar.error(f"Upload failed: {e}")
+            show_overlay(None,None); st.sidebar.error(f"Upload failed: {e}")
 
 # ───── build map ───────────────────────────────────────────────────
-m = folium.Map(location=[-25,145], zoom_start=5,
-               control_scale=True, width="100%", height="100vh")
+m=folium.Map(location=[-25,145],zoom_start=5,control_scale=True,width="100%",height="100vh")
 if static_cfg["basemaps"]:
-    b_cfg = next(b for b in static_cfg["basemaps"]
-                 if b["name"] == st.session_state["basemap"])
-    folium.TileLayer(b_cfg["url"], name=b_cfg["name"],
-                     attr=b_cfg["attr"]).add_to(m)
+    bb=next(b for b in static_cfg["basemaps"] if b["name"]==st.session_state["basemap"])
+    folium.TileLayer(bb["url"],name=bb["name"],attr=bb["attr"]).add_to(m)
 
-overlay_bounds=[]
+bounds=[]
 
-# static overlays
 for ov in static_cfg["overlays"]:
-    if not st.session_state["overlay_state"].get(ov["name"]): continue
-    try:
-        if ov["type"]=="wms":
-            folium.raster_layers.WmsTileLayer(
-                ov["url"], layers=str(ov["layers"]), transparent=True,
-                fmt=ov.get("fmt","image/png"), name=ov["name"],
-                attr=ov["attr"]).add_to(m)
-        elif ov["type"]=="tile":
-            folium.TileLayer(ov["url"], name=ov["name"],
-                             attr=ov["attr"]).add_to(m)
-    except Exception as e:
-        st.warning(f"{ov['name']} failed: {e}")
+    if st.session_state["overlay_state"][ov["name"]]:
+        try:
+            if ov["type"]=="wms":
+                folium.raster_layers.WmsTileLayer(
+                    ov["url"],layers=str(ov["layers"]),transparent=True,
+                    fmt=ov.get("fmt","image/png"),name=ov["name"],attr=ov["attr"]).add_to(m)
+            else:
+                folium.TileLayer(ov["url"],name=ov["name"],attr=ov["attr"]).add_to(m)
+        except Exception as e: st.warning(f"{ov['name']} failed: {e}")
 
-# databases
 for db in static_cfg["databases"]:
-    if not st.session_state["db_state"].get(db["name"]): continue
-    try:
-        if db["type"]=="wms":
-            folium.raster_layers.WmsTileLayer(
-                db["url"], layers=str(db["layers"]), transparent=True,
-                fmt=db.get("fmt","image/png"), name=db["name"],
-                attr=db["attr"]).add_to(m)
-        elif db["type"]=="tile":
-            folium.TileLayer(db["url"], name=db["name"],
-                             attr=db["attr"]).add_to(m)
-    except Exception as e:
-        st.warning(f"{db['name']} failed: {e}")
+    if st.session_state["db_state"][db["name"]]:
+        try:
+            if db["type"]=="wms":
+                folium.raster_layers.WmsTileLayer(
+                    db["url"],layers=str(db["layers"]),transparent=True,
+                    fmt=db.get("fmt","image/png"),name=db["name"],attr=db["attr"]).add_to(m)
+            else:
+                folium.TileLayer(db["url"],name=db["name"],attr=db["attr"]).add_to(m)
+        except Exception as e: st.warning(f"{db['name']} failed: {e}")
 
-# dynamic uploads
 for d in dynamic_cfg:
     if st.session_state["dyn_state"].get(d["id"]):
         try:
-            gj = folium.GeoJson(d["url"], name=d["name"]).add_to(m)
-            overlay_bounds.append(gj.get_bounds())
-        except Exception as e:
-            st.warning(f"{d['name']} failed: {e}")
+            gj=folium.GeoJson(d["url"],name=d["name"]).add_to(m); bounds.append(gj.get_bounds())
+        except Exception as e: st.warning(f"{d['name']} failed: {e}")
 
-# parcels
-parcel_bounds=[]
-parcel_group=folium.FeatureGroup(name="Parcels", show=True).add_to(m)
+parc_bounds=[]
+pg=folium.FeatureGroup(name="Parcels",show=True).add_to(m)
 if "geoms" in st.session_state:
-    s=st.session_state["style"]
-    sty=lambda _:{'fillColor':s['fill'],'color':s['line'],
-                  'weight':s['w'],'fillOpacity':s['op']/100}
+    s=st.session_state["style"]; sty=lambda _:{'fillColor':s['fill'],'color':s['line'],
+                                              'weight':s['w'],'fillOpacity':s['op']/100}
     for lp,g in st.session_state["geoms"].items():
-        folium.GeoJson(mapping(g), style_function=sty, name=lp
-                      ).add_child(folium.Popup(lp)).add_to(parcel_group)
-        parcel_bounds.append(g.bounds)
+        folium.GeoJson(mapping(g),style_function=sty,name=lp
+                      ).add_child(folium.Popup(lp)).add_to(pg)
+        parc_bounds.append(g.bounds)
+if parc_bounds:
+    xs=[b[0] for b in parc_bounds]; ys=[b[1] for b in parc_bounds]
+    xe=[b[2] for b in parc_bounds]; ye=[b[3] for b in parc_bounds]
+    m.fit_bounds([[min(ys),min(xs)],[max(ye),max(xe)]])
+elif bounds: m.fit_bounds(bounds[0])
 
-if parcel_bounds:
-    minx=min(b[0] for b in parcel_bounds); miny=min(b[1] for b in parcel_bounds)
-    maxx=max(b[2] for b in parcel_bounds); maxy=max(b[3] for b in parcel_bounds)
-    m.fit_bounds([[miny,minx],[maxy,maxx]])
-elif overlay_bounds:
-    m.fit_bounds(overlay_bounds[0])
-
-st_folium(m, height=700, use_container_width=True, key="main_map")
+st_folium(m,height=700,use_container_width=True,key="main_map")
 
 # ───── TAB: Downloads ──────────────────────────────────────────────
-if tab == "Downloads":
+if tab=="Downloads":
     st.sidebar.subheader("Export")
     if "geoms" in st.session_state and st.session_state["geoms"]:
-        if st.sidebar.button("💾 Generate KML", use_container_width=True):
-            s=st.session_state["style"]; geoms=st.session_state["geoms"]
-            kml=simplekml.Kml(); root=kml.newfolder(name=s["folder"])
-            fk,lk=kml_colour(s['fill'],s['op']),kml_colour(s['line'],100)
-            for lp,geom in geoms.items():
-                polys=[geom] if isinstance(geom,Polygon) else list(geom.geoms)
-                for idx,poly in enumerate(polys,1):
-                    area_ha=abs(geod.geometry_area_perimeter(poly)[0])/1e4
-                    name=f"{lp} ({idx})" if len(polys)>1 else lp
-                    desc=f"Lot/Plan: {lp}<br>Area: {area_ha:,.2f} ha"
-                    p=root.newpolygon(name=name,description=desc,
-                        outerboundaryis=list(poly.exterior.coords))
-                    for ring in poly.interiors:
-                        p.innerboundaryis.append(list(ring.coords))
-                    p.style.polystyle.color=fk; p.style.linestyle.color=lk
-                    p.style.linestyle.width=float(s['w'])
-            st.sidebar.download_button("Save KML",
-                io.BytesIO(kml.kml().encode()).getvalue(),
-                "parcels.kml","application/vnd.google-earth.kml+xml",
-                use_container_width=True)
-    else:
-        st.sidebar.info("Load parcels in the Query tab first.")
+        if st.sidebar.button("💾 Generate KML"):
+            s=st.session_state["style"]; gs=st.session_state["geoms"]
+            kml=simplekml.Kml(); folder=kml.newfolder(name=s["folder"])
+            fk,lk=kc(s['fill'],s['op']),kc(s['line'],100)
+            for lp,g in gs.items():
+                polys=[g] if isinstance(g,Polygon) else list(g.geoms)
+                for i,p in enumerate(polys,1):
+                    area=abs(Geod(ellps="WGS84").geometry_area_perimeter(p)[0])/1e4
+                    nm=f"{lp} ({i})" if len(polys)>1 else lp
+                    d=f"Lot/Plan: {lp}<br>Area: {area:,.2f} ha"
+                    k=folder.newpolygon(name=nm,description=d,outerboundaryis=p.exterior.coords)
+                    for r in p.interiors: k.innerboundaryis.append(r.coords)
+                    k.style.polystyle.color=fk; k.style.linestyle.color=lk; k.style.linestyle.width=float(s['w'])
+            st.sidebar.download_button("Save KML",io.BytesIO(kml.kml().encode()).getvalue(),
+                                       "parcels.kml","application/vnd.google-earth.kml+xml")
+    else: st.sidebar.info("Load parcels in Query first.")
