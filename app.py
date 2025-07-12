@@ -220,7 +220,7 @@ if "table" in st.session_state and not st.session_state["table"].empty:
                 [st.session_state["parcels"][i]["geom"] for i in selected_ids]
             ).total_bounds
             st.session_state["__zoom"] = [[bb[1], bb[0]], [bb[3], bb[2]]]
-         st.experimental_rerun()
+            st.experimental_rerun()
 
     with c2:
         if st.button("💾 Export selection (KML)", disabled=not selected_ids):
