@@ -6,7 +6,6 @@ azure-storage-blob==12.20.0
 
 # ─── vector-conversion wheel set (Python ≤ 3.12) ───
 geopandas==0.14.4
-pyogrio==0.8.0         # pulls in GDAL wheel
 fiona==1.9.6           # enables KML & SHP read
 shapely==2.0.3         # version that ships wheel
 pyproj==3.6.1          # wheel that matches 0.14.x pandas
