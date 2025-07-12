@@ -16,7 +16,7 @@ databases:
   - name: QLD Cadastre
     type: wms
     url: https://spatial-gis.information.qld.gov.au/arcgis/services/PlanningCadastre/LandParcelPropertyFramework/MapServer/WMSServer
-    layers: Land_Parcels          # ← use the Name, not the number
+    layers: Land Parcels          # ← use the Name, not the number
     attr: © State of Queensland
 
   # NSW cadastral parcels as WMS (layer 9)
