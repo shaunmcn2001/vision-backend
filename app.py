@@ -259,7 +259,7 @@ if "table" in st.session_state and not st.session_state["table"].empty:
     st.session_state["_sel"] = [
     r.get("Lot/Plan") or r.get("Lot_Plan")  # AgGrid replaces '/' with '_'
     for r in sel_rows
-]
+    ]
 
     # Export-ALL bar
     with st.expander("Export ALL", expanded=True):
