@@ -16,11 +16,11 @@ databases:
   - name: QLD Cadastre
     type: wms
     url: https://spatial-gis.information.qld.gov.au/arcgis/services/PlanningCadastre/LandParcelPropertyFramework/MapServer/WMSServer
-    layers: Land_Parcels               # exact layer <Name> from GetCapabilities
-    attr: © State of Queensland
+    layers: 4
+    attr: © State of Queensland (DoR)
 
   - name: NSW Cadastre
     type: wms
     url: https://maps.six.nsw.gov.au/arcgis/services/public/NSW_Cadastre/MapServer/WMSServer
-    layers: cadparcels                 # exact layer <Name> from GetCapabilities
+    layers: 9
     attr: © NSW Spatial Services
