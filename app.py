@@ -13,6 +13,8 @@ import folium, simplekml, geopandas as gpd, pandas as pd
 from shapely.geometry import shape, mapping, Polygon
 from shapely.ops import unary_union, transform
 from pyproj import Transformer, Geod
+import uuid
+import time
 
 # ────── STATIC CONFIG (basemap + overlays only) ────────────────────────────
 CFG = pathlib.Path("layers.yaml")
