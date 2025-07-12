@@ -4,23 +4,8 @@ basemaps:
   - name: OpenStreetMap
     url: https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png
     attr: © OpenStreetMap contributors
-
-overlays:
+    
   - name: Esri Imagery
     type: tile
     url: https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}
     attr: © Esri, Maxar
-
-
-databases:
-  - name: QLD Cadastre
-    type: wms
-    url: https://spatial-gis.information.qld.gov.au/arcgis/services/PlanningCadastre/LandParcelPropertyFramework/MapServer/WMSServer
-    layers: 4
-    attr: © State of Queensland (DoR)
-
-  - name: NSW Cadastre
-    type: wms
-    url: https://maps.six.nsw.gov.au/arcgis/services/public/NSW_Cadastre/MapServer/WMSServer
-    layers: 9
-    attr: © NSW Spatial Services
