@@ -3,8 +3,9 @@
 
 """
 Key updates (2025-07-12):
-• Export-ALL bar now offers only two formats – Shapefile (.shp in a ZIP) and KML – as requested.
-• Removed the **Pulse** visual effect and **Buffer 200 m** option from both the grid context-menu and the associated back-end logic.
+• Export‑ALL now offers only Shapefile (.shp in a ZIP) and KML.
+• Removed the “Pulse” and “Buffer 200 m” tools.
+• Fixed import for streamlit‑folium (use st_folium.get_last_msg instead of missing get_last_msg symbol).
 """
 
 import io, re, json, yaml, pathlib, requests, tempfile, zipfile, os, base64
@@ -12,7 +13,7 @@ from collections import defaultdict
 
 import streamlit as st
 from streamlit_option_menu import option_menu
-from streamlit_folium import st_folium, get_last_msg
+from streamlit_folium import st_folium         # ↩ fixed import
 from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode
 
 import folium, simplekml, geopandas as gpd, pandas as pd
@@ -54,8 +55,7 @@ def fetch_parcels(ids, bbox=None):
     out, miss = {}, []
     for lp in ids:
         url, fld = (
-            (QLD, "lotplan")
-            if re.match(r"^\d+[A-Z]{1,3}\d+$", lp, re.I)
+            (QLD, "lotplan") if re.match(r"^\d+[A-Z]{1,3}\d+$", lp, re.I)
             else (NSW, "lotidstring")
         )
         params = {
@@ -99,10 +99,8 @@ def kml_colour(hexrgb, pct):   # AABBGGRR
 if tab == "Query":
     ids_txt = st.sidebar.text_area("Lot/Plan IDs", height=140,
                                    placeholder="6RP702264\n5//DP123456")
-    restrict = st.sidebar.checkbox(
-        "🔲 Restrict to map extent", value=False,
-        help="Only fetch parcels within the current map view"
-    )
+    restrict = st.sidebar.checkbox("🔲 Restrict to map extent", value=False,
+                                   help="Only fetch parcels within the current map view")
     fx = st.sidebar.color_picker("Fill", "#ff6600")
     fo = st.sidebar.slider("Opacity %", 0, 100, 70)
     lx = st.sidebar.color_picker("Outline", "#2e2e2e")
@@ -137,8 +135,7 @@ if tab == "Layers":
             index=names.index(st.session_state["basemap"]))
     st.sidebar.subheader("Static overlays")
     for o in cfg["overlays"]:
-        st.session_state["ov_state"][o["name"]] = st.sidebar.checkbox(
-            o["name"], value=st.session_state["ov_state"][o["name"]])
+        st.session_state["ov_state"][o["name"]] = st.sidebar.checkbox(o["name"], value=st.session_state["ov_state"][o["name"]])
 
 # ────── BUILD FOLIUM MAP ───────────────────────────────────────────────────
 m = folium.Map(location=[-25, 145], zoom_start=5,
