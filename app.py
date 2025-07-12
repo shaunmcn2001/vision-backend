@@ -190,45 +190,45 @@ if "table" in st.session_state and not st.session_state["table"].empty:
                      for r in st.session_state["parcels"].values()], crs=4326)
 
  # --- ⋮ column with left-click drop-down ---------------------------------
-MENU_JS = """
-class ActionCell {
-  init(p){
-    this.p=p;
-    this.e=document.createElement('div');
-    this.e.style.position='relative';
-    this.e.innerHTML=`<span style="cursor:pointer;font-weight:bold">&#8942;</span>
-      <div class="dd" style="display:none;position:absolute;left:-60px;top:18px;
-           background:#fff;border:1px solid #ccc;border-radius:4px;min-width:120px;
-           box-shadow:0 2px 6px rgba(0,0,0,.15);font-size:12px;z-index:9999">
-        <div class="it" data-act="zoom">Zoom to result</div>
-        <div class="it" data-act="kml">Download KML</div>
-        <div class="it" data-act="remove">Remove</div>
-      </div>`;
-    this.menu=this.e.querySelector('.dd');
-    this.e.onclick=e=>{
-      if(e.target.dataset.act){
-        window.postMessage({type:e.target.dataset.act,row:this.p.data});
-        this.menu.style.display='none';
-      }else{
-        const show=this.menu.style.display==='none';
-        document.querySelectorAll('.dd').forEach(x=>x.style.display='none');
-        this.menu.style.display=show?'block':'none';
+      MENU_JS = """
+      class ActionCell {
+        init(p){
+          this.p=p;
+          this.e=document.createElement('div');
+          this.e.style.position='relative';
+          this.e.innerHTML=`<span style="cursor:pointer;font-weight:bold">&#8942;</span>
+            <div class="dd" style="display:none;position:absolute;left:-60px;top:18px;
+                 background:#fff;border:1px solid #ccc;border-radius:4px;min-width:120px;
+                 box-shadow:0 2px 6px rgba(0,0,0,.15);font-size:12px;z-index:9999">
+              <div class="it" data-act="zoom">Zoom to result</div>
+              <div class="it" data-act="kml">Download KML</div>
+              <div class="it" data-act="remove">Remove</div>
+            </div>`;
+          this.menu=this.e.querySelector('.dd');
+          this.e.onclick=e=>{
+            if(e.target.dataset.act){
+              window.postMessage({type:e.target.dataset.act,row:this.p.data});
+              this.menu.style.display='none';
+            }else{
+              const show=this.menu.style.display==='none';
+              document.querySelectorAll('.dd').forEach(x=>x.style.display='none');
+              this.menu.style.display=show?'block':'none';
+            }
+          };
+        }
+        getGui(){return this.e;}
       }
-    };
-  }
-  getGui(){return this.e;}
-}
-"""
-
-gob = GridOptionsBuilder.from_dataframe(gdf.drop(columns="geometry"))
-gob.configure_selection("multiple", use_checkbox=True)
-gob.configure_column("⋮", header_name="", width=60,
-                     cellRenderer="ActionCell",  # <- just the name
-                     suppressMenu=True)
-
-# inject the JS class under that name
-gob.configure_grid_options(components={"ActionCell": MENU_JS},
-                           getContextMenuItems="() => []")
+      """
+      
+      gob = GridOptionsBuilder.from_dataframe(gdf.drop(columns="geometry"))
+      gob.configure_selection("multiple", use_checkbox=True)
+      gob.configure_column("⋮", header_name="", width=60,
+                           cellRenderer="ActionCell",  # <- just the name
+                           suppressMenu=True)
+      
+      # inject the JS class under that name
+      gob.configure_grid_options(components={"ActionCell": MENU_JS},
+                                 getContextMenuItems="() => []")
 
     # ---- normalise selection -> list-of-dicts ---------------------------
     raw_sel = grid.get("selected_rows", None) if isinstance(grid, dict) \
