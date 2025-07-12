@@ -14,14 +14,14 @@ Streamlit one-page app for parcel lookup & export.
 import io, re, yaml, pathlib, requests, tempfile, zipfile, uuid, shutil
 import streamlit as st
 from streamlit_option_menu import option_menu
-from streamlit_folium import st_folium
+from streamlit_folium import st_folium, get_last_msg
 from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode
 
 import folium, simplekml, geopandas as gpd, pandas as pd
 from shapely.geometry import shape, mapping, Polygon
 from shapely.ops import unary_union, transform
 from pyproj import Transformer, Geod
-from streamlit_folium import st_folium, get_last_msg
+
 # ───────────────────── STATIC CONFIG ────────────────────────────────────
 CFG = pathlib.Path("layers.yaml")
 cfg = yaml.safe_load(CFG.read_text()) if CFG.exists() else {}
