@@ -22,7 +22,7 @@ databases:
   # NSW cadastral parcels as WMS (layer 9)
   - name: NSW Cadastre
     type: wms
-    url: https://maps.six.nsw.gov.au/arcgis/services/public/NSW_Cadastre/MapServer/WMSServer
+    url: https://maps.six.nsw.gov.au/arcgis/rest/services/public/NSW_Cadastre/MapServer/9
     layers: 9               # cadastral polygons
     attr: © NSW Spatial Services
 
