@@ -1,17 +1,20 @@
 #!/usr/bin/env python3
 # LAWD Parcel Toolkit · 2025-07-12
 
+# ── stdlib ───────────────────────────────────────────
 import io, pathlib, requests, tempfile, zipfile, re
+# ── Streamlit & helpers ─────────────────────────────
 import streamlit as st
 from streamlit_option_menu import option_menu
 from streamlit_folium import st_folium
 from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode
+# ── geo / data ──────────────────────────────────────
 import folium, simplekml, geopandas as gpd, pandas as pd
 from shapely.geometry import shape, mapping, Polygon
 from shapely.ops import unary_union, transform
 from pyproj import Transformer, Geod
 
-# ─────────── STATIC CONFIG ─────────────────────────────
+# ───────── STATIC CONFIG ─────────────────────────────
 CFG = pathlib.Path("layers.yaml")
 try:
     import yaml
@@ -21,30 +24,35 @@ except ImportError:
 for k in ("basemaps", "overlays"):
     cfg.setdefault(k, [])
 
-# ─────────── SHELL & NAV ───────────────────────────────
-st.set_page_config("Lot/Plan Toolkit", "📍", layout="wide",
-                   initial_sidebar_state="collapsed")
+# ───────── SHELL & NAV ───────────────────────────────
+st.set_page_config("Lot/Plan Toolkit", "📍", layout="wide", initial_sidebar_state="collapsed")
 st.markdown(
     "<div style='background:#ff6600;color:#fff;font-size:20px;"
-    "font-weight:600;padding:6px 20px;border-radius:8px;"
-    "margin-bottom:6px'>LAWD – Parcel Toolkit</div>",
+    "font-weight:600;padding:6px 20px;border-radius:8px;margin-bottom:6px'>"
+    "LAWD – Parcel Toolkit</div>",
     unsafe_allow_html=True
 )
 with st.sidebar:
-    tab = option_menu(None, ["Query", "Layers", "Downloads"],
-                      icons=["search", "layers", "download"],
-                      default_index=0,
-                      styles={"container":{"padding":"0","background":"#262730"},
-                              "nav-link-selected":{"background":"#ff6600"}})
+    tab = option_menu(
+        None, ["Query", "Layers", "Downloads"],
+        icons=["search", "layers", "download"], default_index=0,
+        styles={"container": {"padding": "0", "background": "#262730"},
+                "nav-link-selected": {"background": "#ff6600"}}
+    )
+
 if cfg["basemaps"]:
     st.session_state.setdefault("basemap", cfg["basemaps"][0]["name"])
 st.session_state.setdefault("ov_state", {o["name"]: False for o in cfg["overlays"]})
 
-# ─────────── CADASTRE LOOKUP ───────────────────────────
-QLD = ("https://spatial-gis.information.qld.gov.au/arcgis/rest/services/"
-       "PlanningCadastre/LandParcelPropertyFramework/MapServer/4/query")
-NSW = ("https://maps.six.nsw.gov.au/arcgis/rest/services/public/"
-       "NSW_Cadastre/MapServer/9/query")
+# ───────── CADASTRE LOOKUP ───────────────────────────
+QLD = (
+    "https://spatial-gis.information.qld.gov.au/arcgis/rest/services/"
+    "PlanningCadastre/LandParcelPropertyFramework/MapServer/4/query"
+)
+NSW = (
+    "https://maps.six.nsw.gov.au/arcgis/rest/services/public/"
+    "NSW_Cadastre/MapServer/9/query"
+)
 geod = Geod(ellps="WGS84")
 
 def fetch_parcels(ids):
@@ -53,18 +61,25 @@ def fetch_parcels(ids):
         url, fld = (QLD, "lotplan") if re.match(r"^\d+[A-Z]{1,3}\d+$", lp, re.I) \
                    else (NSW, "lotidstring")
         try:
-            js = requests.get(url, params={
-                "where": f"{fld}='{lp}'",
-                "outFields": "*",
-                "returnGeometry": "true",
-                "f": "geojson"
-            }, timeout=15).json()
+            js = requests.get(
+                url,
+                params={
+                    "where": f"{fld}='{lp}'",
+                    "outFields": "*",
+                    "returnGeometry": "true",
+                    "f": "geojson",
+                },
+                timeout=15,
+            ).json()
             feats = js.get("features", [])
             if not feats:
                 miss.append(lp)
                 continue
             wkid = feats[0]["geometry"].get("spatialReference", {}).get("wkid", 4326)
-            tfm = Transformer.from_crs(wkid, 4326, always_xy=True).transform if wkid != 4326 else None
+            tfm = (
+                Transformer.from_crs(wkid, 4326, always_xy=True).transform
+                if wkid != 4326 else None
+            )
             polys, props = [], {}
             for ft in feats:
                 g = shape(ft["geometry"])
@@ -76,11 +91,11 @@ def fetch_parcels(ids):
     return out, miss
 
 def kml_colour(hexrgb, pct):
-    r,g,b = hexrgb[1:3], hexrgb[3:5], hexrgb[5:7]
+    r, g, b = hexrgb[1:3], hexrgb[3:5], hexrgb[5:7]
     a = int(round(255 * pct / 100))
     return f"{a:02x}{b}{g}{r}"
 
-# ─────────── TAB: QUERY ─────────────────────────────────
+# ───────── TAB: QUERY ──────────────────────────────────
 if tab == "Query":
     ids_txt = st.sidebar.text_area("Lot/Plan IDs", height=120,
                                    placeholder="6RP702264\n5//DP123456")
@@ -106,7 +121,11 @@ if tab == "Query":
             props = rec["props"]
             ltype = props.get("lottype") or props.get("PURPOSE") or "n/a"
             area = abs(geod.geometry_area_perimeter(rec["geom"])[0]) / 1e4
-            rows.append({"Lot/Plan": lp, "Lot Type": ltype, "Area (ha)": round(area, 2)})
+            rows.append({
+                "Lot/Plan": lp,
+                "Lot Type": ltype,
+                "Area (ha)": round(area, 2)
+            })
 
         st.session_state.update(
             parcels=recs,
@@ -115,7 +134,7 @@ if tab == "Query":
         )
         st.success(f"{len(recs)} parcel{'s'*(len(recs)!=1)} loaded.")
 
-# ─────────── TAB: LAYERS ───────────────────────────────
+# ───────── TAB: LAYERS ─────────────────────────────────
 if tab == "Layers":
     if cfg["basemaps"]:
         st.sidebar.subheader("Basemap")
@@ -129,7 +148,7 @@ if tab == "Layers":
             o["name"], value=st.session_state["ov_state"][o["name"]]
         )
 
-# ─────────── MAP BUILD ─────────────────────────────────
+# ───────── MAP BUILD ──────────────────────────────────
 m = folium.Map(location=[-25, 145], zoom_start=5,
                control_scale=True, width="100%", height="100vh")
 if cfg["basemaps"]:
@@ -169,7 +188,7 @@ if "parcels" in st.session_state:
 folium_out = st_folium(m, height=550, use_container_width=True, key="map")
 st.session_state["last_bounds"] = folium_out.get("bounds")
 
-# ─────────── TABLE + ACTIONS ───────────────────────────
+# ───────── TABLE + ACTION BUTTONS ──────────────────────
 if "table" in st.session_state and not st.session_state["table"].empty:
     st.subheader("Query Results")
 
@@ -186,8 +205,7 @@ if "table" in st.session_state and not st.session_state["table"].empty:
     grid_resp = AgGrid(
         gdf.drop(columns="geometry"),
         gridOptions=gob.build(),
-        update_mode=GridUpdateMode.SELECTION_CHANGED,  # <– critical
-        allow_unsafe_jscode=True,
+        update_mode=GridUpdateMode.SELECTION_CHANGED,  # auto-update on tick
         height=250,
     )
 
@@ -261,6 +279,6 @@ if "table" in st.session_state and not st.session_state["table"].empty:
                 "application/vnd.google-earth.kml+xml"
             )
 
-# ─────────── APPLY QUEUED ZOOM ─────────────────────────
+# ───────── APPLY QUEUED ZOOM ──────────────────────────
 if "__zoom" in st.session_state:
     m.fit_bounds(st.session_state.pop("__zoom"))
