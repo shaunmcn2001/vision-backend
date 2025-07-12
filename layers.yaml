@@ -20,7 +20,6 @@ databases:
     attr: © State of Queensland (Dept Resources)
 
   # NSW cadastral parcels as WMS (layer 9)
- databases:
   - name: NSW Cadastre
     type: wms
     url: https://maps.six.nsw.gov.au/arcgis/services/public/NSW_Cadastre/MapServer/WMSServer
