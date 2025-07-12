@@ -16,8 +16,8 @@ databases:
   - name: QLD Cadastre
     type: wms
     url: https://spatial-gis.information.qld.gov.au/arcgis/services/PlanningCadastre/LandParcelPropertyFramework/MapServer/WMSServer
-    layers: 4
-    attr: © State of Queensland (Dept Resources)
+    layers: Land_Parcels          # ← use the Name, not the number
+    attr: © State of Queensland
 
   # NSW cadastral parcels as WMS (layer 9)
   - name: NSW Cadastre
@@ -25,13 +25,6 @@ databases:
     url: https://maps.six.nsw.gov.au/arcgis/rest/services/public/NSW_Cadastre/MapServer/9
     layers: 9               # cadastral polygons
     attr: © NSW Spatial Services
-
-  # QLD Land Parcel Property Framework (parcel polygons = layer 4)
-  - name: QLD Cadastre – full LPPF
-    type: wms
-    url: https://spatial-gis.information.qld.gov.au/arcgis/services/PlanningCadastre/LandParcelPropertyFramework/MapServer/WMSServer
-    layers: 4
-    attr: © State of Queensland (Department of Resources)
 
   # Example AGOL layer (GeoJSON) – optional
   - name: Example AGOL layer
