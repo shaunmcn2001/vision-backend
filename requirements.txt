@@ -9,4 +9,4 @@ pandas==2.0.3
 pyyaml>=6.0
 shapely>=2.0.1
 pyproj==3.6.1
-uuid
+requests>=2.28.0
