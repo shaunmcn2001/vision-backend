@@ -1,6 +1,6 @@
-# app.py  –  LAWD Parcel Toolkit  (Azure removed, AGOL-ready)
+# app.py  –  LAWD Parcel Toolkit  (no uploader, YAML-only layers)
 
-import io, re, json, yaml, pathlib, uuid, tempfile, zipfile, requests, streamlit as st
+import io, re, json, yaml, pathlib, requests, streamlit as st
 from collections import defaultdict
 from streamlit_option_menu import option_menu
 from streamlit_folium import st_folium
@@ -11,13 +11,13 @@ from pyproj import Transformer, Geod
 
 fiona.drvsupport.supported_drivers["KML"] = "rw"
 
-# ─── static config (basemaps, overlays, databases) ─────────────────
-REG = pathlib.Path("layers.yaml")
-cfg = yaml.safe_load(REG.read_text())
+# ─── static config ─────────────────────────────────────────────────
+CFG_PATH = pathlib.Path("layers.yaml")
+cfg = yaml.safe_load(CFG_PATH.read_text())
 for k in ("basemaps","overlays","databases"):
     cfg.setdefault(k, [])
 
-# ─── Streamlit UI boilerplate ──────────────────────────────────────
+# ─── Streamlit UI basics ───────────────────────────────────────────
 st.set_page_config("Lot/Plan → KML", "📍", layout="wide",
                    initial_sidebar_state="collapsed")
 st.markdown("<div style='background:#ff6600;color:#fff;font-size:20px;"
@@ -34,8 +34,6 @@ if cfg["basemaps"]:
     st.session_state.setdefault("basemap", cfg["basemaps"][0]["name"])
 st.session_state.setdefault("ov_state",{o["name"]:False for o in cfg["overlays"]})
 st.session_state.setdefault("db_state",{d["name"]:False for d in cfg["databases"]})
-st.session_state.setdefault("uploads", {})       # id → {"name","gdf"}
-st.session_state.setdefault("dyn_state", {})     # id → bool (show?)
 
 # ─── cadastre fetchers ─────────────────────────────────────────────
 QLD = ("https://spatial-gis.information.qld.gov.au/arcgis/rest/services/"
@@ -45,7 +43,6 @@ NSW = ("https://maps.six.nsw.gov.au/arcgis/rest/services/public/"
 geod = Geod(ellps="WGS84")
 
 def fetch_parcels(ids):
-    """Return {lotplan: shapely geom}, [missed]"""
     grp, miss = defaultdict(list), []
     for lp in ids:
         url,fld = (QLD,"lotplan") if re.match(r"^\d+[A-Z]{1,3}\d+$",lp,re.I) else (NSW,"lotidstring")
@@ -60,84 +57,72 @@ def fetch_parcels(ids):
             for ft in feats:
                 geom=shape(ft["geometry"])
                 grp[lp].append(transform(tfm,geom) if tfm else geom)
-        except Exception: miss.append(lp)
+        except Exception:
+            miss.append(lp)
+    from shapely.ops import unary_union
     return {lp: unary_union(gs) for lp,gs in grp.items()}, miss
 
-def kml_colour(hex_rgb,pct):
-    r,g,b = hex_rgb[1:3],hex_rgb[3:5],hex_rgb[5:7]
-    a = int(round(255*pct/100))
-    return f"{a:02x}{b}{g}{r}"
+def kml_colour(h,p): r,g,b=h[1:3],h[3:5],h[5:7]; a=int(round(255*p/100)); return f"{a:02x}{b}{g}{r}"
 
-# ─── TAB 1 Query ───────────────────────────────────────────────────
+# ─── TAB: Query ────────────────────────────────────────────────────
 if tab=="Query":
-    ids_in = st.sidebar.text_area("Lot/Plan IDs", height=140,
-                                  placeholder="6RP702264\n5//DP123456")
-    fx = st.sidebar.color_picker("Fill", "#ff6600")
-    fo = st.sidebar.slider("Fill opacity %", 0,100,70)
-    lx = st.sidebar.color_picker("Outline", "#2e2e2e")
-    lw = st.sidebar.slider("Outline width px", 0.5, 6.0, 1.2, 0.1)
-    folder = st.sidebar.text_input("KML folder name", "Parcels")
+    ids_txt=st.sidebar.text_area("Lot/Plan IDs", height=140,
+                                 placeholder="6RP702264\n5//DP123456")
+    fx=st.sidebar.color_picker("Fill","#ff6600")
+    fo=st.sidebar.slider("Fill opacity %",0,100,70)
+    lx=st.sidebar.color_picker("Outline","#2e2e2e")
+    lw=st.sidebar.slider("Outline width px",0.5,6.0,1.2,0.1)
+    folder=st.sidebar.text_input("KML folder","Parcels")
 
-    if st.sidebar.button("🔍 Search") and ids_in.strip():
-        ids=[s.strip() for s in ids_in.splitlines() if s.strip()]
+    if st.sidebar.button("🔍 Search") and ids_txt.strip():
+        ids=[s.strip() for s in ids_txt.splitlines() if s.strip()]
         with st.spinner("Fetching parcels…"):
-            geoms, miss = fetch_parcels(ids)
-        if miss: st.sidebar.warning("Not found: " + ", ".join(miss))
-        st.session_state["parcels"] = geoms
-        st.session_state["style"]   = dict(fill=fx,op=fo,line=lx,w=lw,folder=folder)
-        st.sidebar.success(f"{len(geoms)} parcels loaded.")
+            geoms,miss=fetch_parcels(ids)
+        if miss: st.sidebar.warning("Not found: "+", ".join(miss))
+        st.session_state["parcels"]=geoms
+        st.session_state["style"]=dict(fill=fx,op=fo,line=lx,w=lw,folder=folder)
+        st.sidebar.success(f"{len(geoms)} parcel{'s'*(len(geoms)!=1)} loaded.")
 
-# ─── TAB 2 Layers ──────────────────────────────────────────────────
+# ─── TAB: Layers ───────────────────────────────────────────────────
 if tab=="Layers":
+    # basemap toggle
     if cfg["basemaps"]:
         st.sidebar.subheader("Basemap")
-        bnames=[b["name"] for b in cfg["basemaps"]]
-        st.session_state["basemap"] = st.sidebar.radio(
-            "", bnames, index=bnames.index(st.session_state["basemap"]))
+        names=[b["name"] for b in cfg["basemaps"]]
+        st.session_state["basemap"]=st.sidebar.radio("",names,
+            index=names.index(st.session_state["basemap"]))
 
+    # overlay toggles
     st.sidebar.subheader("Static overlays")
     for o in cfg["overlays"]:
         st.session_state["ov_state"][o["name"]] = st.sidebar.checkbox(
             o["name"], value=st.session_state["ov_state"][o["name"]])
 
-    st.sidebar.subheader("Databases")
+    # database toggles
+    st.sidebar.subheader("Databases / GIS layers")
     for d in cfg["databases"]:
         st.session_state["db_state"][d["name"]] = st.sidebar.checkbox(
             d["name"], value=st.session_state["db_state"][d["name"]])
 
-    st.sidebar.subheader("Upload GeoJSON / Shapefile")
-    up = st.sidebar.file_uploader("GeoJSON / KML / KMZ / ZIP", type=["geojson","json","kml","kmz","zip"])
-    up_name = st.sidebar.text_input("Display name")
-    if st.sidebar.button("Add upload") and up and up_name:
-        tmp= tempfile.mkdtemp(); raw=pathlib.Path(tmp)/up.name
-        raw.write_bytes(up.read())
-        if raw.suffix.lower()==".zip":
-            with zipfile.ZipFile(raw) as z: z.extractall(tmp)
-            shp = next(pathlib.Path(tmp).glob("*.shp"))
-            gdf = gpd.read_file(shp)
-        else:
-            gdf = gpd.read_file(raw)
-        if gdf.crs and gdf.crs.to_epsg()!=4326:
-            gdf=gdf.to_crs(4326)
-        uid = uuid.uuid4().hex
-        st.session_state["uploads"][uid] = {"name": up_name, "gdf": gdf}
-        st.session_state["dyn_state"][uid] = True
-        st.sidebar.success("Added upload.")
-
-    # toggle uploads
-    if st.session_state["uploads"]:
-        st.sidebar.subheader("Toggle uploads")
-        for uid,meta in st.session_state["uploads"].items():
-            st.session_state["dyn_state"][uid] = st.sidebar.checkbox(
-                meta["name"], value=st.session_state["dyn_state"].get(uid,True))
+    # add new GIS service entry
+    with st.sidebar.expander("➕ Add GIS service"):
+        n=st.text_input("Display name"); u=st.text_input("URL …")
+        t=st.selectbox("Type",["wms","tile","geojson"])
+        l=st.text_input("Layers (WMS only)")
+        a=st.text_input("Attribution","© Source")
+        if st.button("Add to YAML") and n and u:
+            cfg["databases"].append({"name":n,"type":t,"url":u,"layers":l,"attr":a})
+            CFG_PATH.write_text(yaml.safe_dump(cfg, sort_keys=False))
+            st.sidebar.success("Added.  Reload the app to see it.")
+            st.stop()
 
 # ─── Build Folium map ──────────────────────────────────────────────
-m = folium.Map(location=[-25,145], zoom_start=5, control_scale=True,
-               width="100%", height="100vh")
+m=folium.Map(location=[-25,145],zoom_start=5,control_scale=True,
+             width="100%",height="100vh")
 
 # basemap
 if cfg["basemaps"]:
-    b = next(bb for bb in cfg["basemaps"] if bb["name"]==st.session_state["basemap"])
+    b=next(bb for bb in cfg["basemaps"] if bb["name"]==st.session_state["basemap"])
     folium.TileLayer(b["url"], name=b["name"], attr=b["attr"]).add_to(m)
 
 # overlays
@@ -154,7 +139,7 @@ for o in cfg["overlays"]:
         except Exception as e:
             st.warning(f"{o['name']} failed: {e}")
 
-# databases (now supports wms, tile, geojson)
+# databases
 bounds=[]
 for d in cfg["databases"]:
     if not st.session_state["db_state"][d["name"]]: continue
@@ -167,39 +152,30 @@ for d in cfg["databases"]:
         elif d["type"]=="tile":
             folium.TileLayer(d["url"], name=d["name"], attr=d["attr"]).add_to(m)
         elif d["type"]=="geojson":
-            gj = requests.get(d["url"], timeout=15).json()
-            g = folium.GeoJson(gj, name=d["name"]).add_to(m)
+            gj=json.loads(requests.get(d["url"], timeout=15).text)
+            g=folium.GeoJson(gj, name=d["name"]).add_to(m)
             bounds.append(g.get_bounds())
-        else:
-            st.warning(f"{d['name']}: unknown type {d['type']}")
     except Exception as e:
         st.warning(f"{d['name']} failed: {e}")
 
-# uploads
-for uid,meta in st.session_state["uploads"].items():
-    if st.session_state["dyn_state"].get(uid):
-        gj = folium.GeoJson(meta["gdf"].__geo_interface__, name=meta["name"]).add_to(m)
-        bounds.append(gj.get_bounds())
-
 # parcels
 if "parcels" in st.session_state:
-    s=st.session_state["style"]; sty=lambda _:{'fillColor':s['fill'],'color':s['line'],
-                                              'weight':s['w'],'fillOpacity':s['op']/100}
+    s=st.session_state["style"]
+    sty=lambda _:{'fillColor':s['fill'],'color':s['line'],
+                  'weight':s['w'],'fillOpacity':s['op']/100}
     pg=folium.FeatureGroup(name="Parcels",show=True).add_to(m)
     for lp,g in st.session_state["parcels"].items():
         folium.GeoJson(mapping(g),style_function=sty,name=lp
                       ).add_child(folium.Popup(lp)).add_to(pg)
         bounds.append([[g.bounds[1],g.bounds[0]],[g.bounds[3],g.bounds[2]]])
 
-# zoom to data
+# zoom to visible data
 if bounds:
-    (sf,ef) = zip(*[b for b in bounds])
-    m.fit_bounds([[min(y for y,_ in sf), min(x for _,x in sf)],
-                  [max(y for y,_ in ef), max(x for _,x in ef)]])
-
+    xs,ys,xe,ye = zip(*[(b[0][1],b[0][0],b[1][1],b[1][0]) for b in bounds])
+    m.fit_bounds([[min(ys),min(xs)],[max(ye),max(xe)]])
 st_folium(m, height=700, use_container_width=True, key="main_map")
 
-# ─── TAB 3 Downloads ───────────────────────────────────────────────
+# ─── TAB: Downloads ────────────────────────────────────────────────
 if tab=="Downloads":
     st.sidebar.subheader("Export")
     if "parcels" in st.session_state and st.session_state["parcels"]:
@@ -216,7 +192,9 @@ if tab=="Downloads":
                     pl=fld.newpolygon(name=nm,description=desc,
                                       outerboundaryis=p.exterior.coords)
                     for r in p.interiors: pl.innerboundaryis.append(r.coords)
-                    pl.style.polystyle.color=fk; pl.style.linestyle.color=lk; pl.style.linestyle.width=float(s['w'])
+                    pl.style.polystyle.color=fk
+                    pl.style.linestyle.color=lk
+                    pl.style.linestyle.width=float(s['w'])
             st.sidebar.download_button("Save KML",
                 io.BytesIO(kml.kml().encode()).getvalue(),"parcels.kml",
                 "application/vnd.google-earth.kml+xml")
