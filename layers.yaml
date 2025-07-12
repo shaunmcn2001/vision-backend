@@ -19,15 +19,17 @@ databases:          # «map services you can toggle»
     layers: 4
     attr: © QLD Gov
 
-  # NSW cadastre parcel polygons
-  - name: NSW Cadastre
-    type: wms
-    url: https://maps.six.nsw.gov.au/arcgis/services/public/NSW_Cadastre/MapServer/WMSServer
-    layers: 9
-    attr: © NSW Spatial Services
+ databases:
+  - name: QLD Cadastre
+    type: tile
+    url: >-
+      https://spatial-gis.information.qld.gov.au/arcgis/rest/services/
+      PlanningCadastre/LandParcelPropertyFramework/MapServer/tile/{z}/{y}/{x}
+    attr: © State of Queensland (Dept Resources)
 
-  # example AGOL layer served as GeoJSON (replace with your own)
-  - name: Example AGOL layer
-    type: geojson
-    url: https://services8.arcgis.com/.../FeatureServer/0/query?where=1%3D1&outSR=4326&f=pgeojson
-    attr: © Your Org
+  - name: NSW Cadastre
+    type: tile
+    url: >-
+      https://maps.six.nsw.gov.au/arcgis/rest/services/public/
+      NSW_Cadastre/MapServer/tile/{z}/{y}/{x}
+    attr: © NSW Spatial Services
