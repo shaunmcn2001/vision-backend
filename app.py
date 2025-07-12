@@ -1,20 +1,17 @@
 #!/usr/bin/env python3
 # LAWD Parcel Toolkit · 2025-07-12
 
-# ── stdlib ───────────────────────────────────────────
 import io, pathlib, requests, tempfile, zipfile, re
-# ── Streamlit & helpers ─────────────────────────────
 import streamlit as st
 from streamlit_option_menu import option_menu
 from streamlit_folium import st_folium
 from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode
-# ── geo / data ──────────────────────────────────────
 import folium, simplekml, geopandas as gpd, pandas as pd
 from shapely.geometry import shape, mapping, Polygon
 from shapely.ops import unary_union, transform
 from pyproj import Transformer, Geod
 
-# ───────── STATIC CONFIG (basemap & overlays) ─────────
+# ─────────── STATIC CONFIG ─────────────────────────────
 CFG = pathlib.Path("layers.yaml")
 try:
     import yaml
@@ -24,28 +21,26 @@ except ImportError:
 for k in ("basemaps", "overlays"):
     cfg.setdefault(k, [])
 
-# ───────── STREAMLIT SHELL / NAV ──────────────────────
+# ─────────── SHELL & NAV ───────────────────────────────
 st.set_page_config("Lot/Plan Toolkit", "📍", layout="wide",
                    initial_sidebar_state="collapsed")
 st.markdown(
-    "<div style='background:#ff6600;color:#fff;font-size:20px;font-weight:600;"
-    "padding:6px 20px;border-radius:8px;margin-bottom:6px'>"
-    "LAWD – Parcel Toolkit</div>",
+    "<div style='background:#ff6600;color:#fff;font-size:20px;"
+    "font-weight:600;padding:6px 20px;border-radius:8px;"
+    "margin-bottom:6px'>LAWD – Parcel Toolkit</div>",
     unsafe_allow_html=True
 )
-
 with st.sidebar:
     tab = option_menu(None, ["Query", "Layers", "Downloads"],
                       icons=["search", "layers", "download"],
                       default_index=0,
                       styles={"container":{"padding":"0","background":"#262730"},
                               "nav-link-selected":{"background":"#ff6600"}})
-
 if cfg["basemaps"]:
     st.session_state.setdefault("basemap", cfg["basemaps"][0]["name"])
 st.session_state.setdefault("ov_state", {o["name"]: False for o in cfg["overlays"]})
 
-# ───────── CADASTRE LOOK-UP ───────────────────────────
+# ─────────── CADASTRE LOOKUP ───────────────────────────
 QLD = ("https://spatial-gis.information.qld.gov.au/arcgis/rest/services/"
        "PlanningCadastre/LandParcelPropertyFramework/MapServer/4/query")
 NSW = ("https://maps.six.nsw.gov.au/arcgis/rest/services/public/"
@@ -70,22 +65,22 @@ def fetch_parcels(ids):
                 continue
             wkid = feats[0]["geometry"].get("spatialReference", {}).get("wkid", 4326)
             tfm = Transformer.from_crs(wkid, 4326, always_xy=True).transform if wkid != 4326 else None
-            geoms, props = [], {}
+            polys, props = [], {}
             for ft in feats:
                 g = shape(ft["geometry"])
-                geoms.append(transform(tfm, g) if tfm else g)
+                polys.append(transform(tfm, g) if tfm else g)
                 props = ft["properties"]
-            out[lp] = {"geom": unary_union(geoms), "props": props}
+            out[lp] = {"geom": unary_union(polys), "props": props}
         except Exception:
             miss.append(lp)
     return out, miss
 
 def kml_colour(hexrgb, pct):
-    r, g, b = hexrgb[1:3], hexrgb[3:5], hexrgb[5:7]
+    r,g,b = hexrgb[1:3], hexrgb[3:5], hexrgb[5:7]
     a = int(round(255 * pct / 100))
     return f"{a:02x}{b}{g}{r}"
 
-# ───────── TAB: QUERY ──────────────────────────────────
+# ─────────── TAB: QUERY ─────────────────────────────────
 if tab == "Query":
     ids_txt = st.sidebar.text_area("Lot/Plan IDs", height=120,
                                    placeholder="6RP702264\n5//DP123456")
@@ -111,11 +106,7 @@ if tab == "Query":
             props = rec["props"]
             ltype = props.get("lottype") or props.get("PURPOSE") or "n/a"
             area = abs(geod.geometry_area_perimeter(rec["geom"])[0]) / 1e4
-            rows.append({
-                "Lot/Plan": lp,
-                "Lot Type": ltype,
-                "Area (ha)": round(area, 2)
-            })
+            rows.append({"Lot/Plan": lp, "Lot Type": ltype, "Area (ha)": round(area, 2)})
 
         st.session_state.update(
             parcels=recs,
@@ -124,7 +115,7 @@ if tab == "Query":
         )
         st.success(f"{len(recs)} parcel{'s'*(len(recs)!=1)} loaded.")
 
-# ───────── TAB: LAYERS ─────────────────────────────────
+# ─────────── TAB: LAYERS ───────────────────────────────
 if tab == "Layers":
     if cfg["basemaps"]:
         st.sidebar.subheader("Basemap")
@@ -138,7 +129,7 @@ if tab == "Layers":
             o["name"], value=st.session_state["ov_state"][o["name"]]
         )
 
-# ───────── MAP BUILD ──────────────────────────────────
+# ─────────── MAP BUILD ─────────────────────────────────
 m = folium.Map(location=[-25, 145], zoom_start=5,
                control_scale=True, width="100%", height="100vh")
 if cfg["basemaps"]:
@@ -178,34 +169,34 @@ if "parcels" in st.session_state:
 folium_out = st_folium(m, height=550, use_container_width=True, key="map")
 st.session_state["last_bounds"] = folium_out.get("bounds")
 
-# ───────── TABLE + ACTION BUTTONS ──────────────────────
+# ─────────── TABLE + ACTIONS ───────────────────────────
 if "table" in st.session_state and not st.session_state["table"].empty:
     st.subheader("Query Results")
 
-    # Build GeoDataFrame for AgGrid
+    # build GeoDataFrame
     gdf = gpd.GeoDataFrame(
         st.session_state["table"],
         geometry=[rec["geom"] for rec in st.session_state["parcels"].values()],
         crs=4326
     )
 
-    # Configure AgGrid with checkbox selection
+    # AgGrid with checkbox selection
     gob = GridOptionsBuilder.from_dataframe(gdf.drop(columns="geometry"))
     gob.configure_selection("multiple", use_checkbox=True)
-    grid_response = AgGrid(
+    grid_resp = AgGrid(
         gdf.drop(columns="geometry"),
         gridOptions=gob.build(),
-        update_mode=GridUpdateMode.SELECTION_CHANGED,  # auto-update on tick
+        update_mode=GridUpdateMode.SELECTION_CHANGED,  # <– critical
         allow_unsafe_jscode=True,
         height=250,
     )
 
-    sel_rows = grid_response.get("selected_rows", [])
+    sel_rows = grid_resp.get("selected_rows", [])
     selected_ids = [r["Lot/Plan"] for r in sel_rows]
 
-    # Action buttons under the grid
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
+    # action buttons
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
         if st.button("🔍 Zoom to selection", disabled=not selected_ids):
             bb = gpd.GeoSeries(
                 [st.session_state["parcels"][i]["geom"] for i in selected_ids]
@@ -213,7 +204,7 @@ if "table" in st.session_state and not st.session_state["table"].empty:
             st.session_state["__zoom"] = [[bb[1], bb[0]], [bb[3], bb[2]]]
             st.experimental_rerun()
 
-    with col2:
+    with c2:
         if st.button("💾 Export selection (KML)", disabled=not selected_ids):
             s = st.session_state["style"]
             fk, lk = kml_colour(s["fill"], s["op"]), kml_colour(s["line"], 100)
@@ -237,7 +228,7 @@ if "table" in st.session_state and not st.session_state["table"].empty:
                 "application/vnd.google-earth.kml+xml"
             )
 
-    with col3:
+    with c3:
         if st.button("🗑️ Remove selection", disabled=not selected_ids):
             for lp in selected_ids:
                 st.session_state["parcels"].pop(lp, None)
@@ -246,7 +237,7 @@ if "table" in st.session_state and not st.session_state["table"].empty:
             ]
             st.experimental_rerun()
 
-    with col4:
+    with c4:
         if st.button("📦 Export ALL (KML)", disabled=st.session_state["table"].empty):
             s = st.session_state["style"]
             fk, lk = kml_colour(s["fill"], s["op"]), kml_colour(s["line"], 100)
@@ -270,6 +261,6 @@ if "table" in st.session_state and not st.session_state["table"].empty:
                 "application/vnd.google-earth.kml+xml"
             )
 
-# ───────── QUEUED ZOOM HANDLER ────────────────────────
+# ─────────── APPLY QUEUED ZOOM ─────────────────────────
 if "__zoom" in st.session_state:
     m.fit_bounds(st.session_state.pop("__zoom"))
