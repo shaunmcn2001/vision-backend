@@ -1,40 +1,32 @@
-# layers.yaml  ─ LAWD Parcel Toolkit configuration
-# -------------------------------------------------
-# Add or edit entries in any of the three sections below.
-# type can be:  tile   |   wms   |   geojson
+# layers.yaml  –  WMS versions that actually draw
 
-# ---------- Basemaps ----------
 basemaps:
   - name: OpenStreetMap
     url: https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png
     attr: © OpenStreetMap contributors
 
-# ---------- Optional Overlays ----------
-basemaps:
+overlays:
   - name: Esri Imagery
+    type: tile
     url: https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}
     attr: © Esri, Maxar
 
-# ---------- Databases / GIS layers ----------
 databases:
-  # QLD cadastral parcels (polygon layer 4)
+  # QLD cadastral parcels as WMS (layer 4)
   - name: QLD Cadastre
-    type: tile
-    url: >-
-      https://spatial-gis.information.qld.gov.au/arcgis/rest/services/
-      PlanningCadastre/LandParcelPropertyFramework/MapServer/tile/{z}/{y}/{x}
+    type: wms
+    url: https://spatial-gis.information.qld.gov.au/arcgis/services/PlanningCadastre/LandParcelPropertyFramework/MapServer/WMSServer
+    layers: 4
     attr: © State of Queensland (Dept Resources)
 
-  # NSW cadastral parcels (polygon layer 9)
+  # NSW cadastral parcels as WMS (layer 9)
   - name: NSW Cadastre
-    type: tile
-    url: >-
-      https://maps.six.nsw.gov.au/arcgis/rest/services/public/
-      NSW_Cadastre/MapServer/tile/{z}/{y}/{x}
+    type: wms
+    url: https://maps.six.nsw.gov.au/arcgis/services/public/NSW_Cadastre/MapServer/WMSServer
+    layers: 9
     attr: © NSW Spatial Services
 
-  # Example ArcGIS Online layer exposed as GeoJSON
-  # Replace this URL with your own AGOL “GeoJSON” endpoint or delete.
+  # Example AGOL layer (GeoJSON) – optional
   - name: Example AGOL layer
     type: geojson
     url: https://services8.arcgis.com/xxxxxxxx/ArcGIS/rest/services/MyLayer/FeatureServer/0/query?where=1%3D1&outSR=4326&f=pgeojson
