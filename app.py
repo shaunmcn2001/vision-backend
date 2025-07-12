@@ -23,17 +23,9 @@ for k in ("basemaps", "overlays"):
 # ────── STREAMLIT SHELL ────────────────────────────────────────────────────
 st.set_page_config("Lot/Plan → KML", "📍", layout="wide",
                    initial_sidebar_state="collapsed")
-st.markdown(
-    "<div style='background:#ff6600;color:#fff;font-size:20px;font-weight:600;"
-    "padding:6px 20px;border-radius:8px;margin-bottom:6px'>"
-    "LAWD – Parcel Toolkit</div>", unsafe_allow_html=True)
+st.title("LAWD – Parcel Toolkit")
 
-with st.sidebar:
-    tab = option_menu(
-        None, ["Query", "Layers", "Downloads"],
-        icons=["search", "layers", "download"], default_index=0,
-        styles={"container":{"padding":"0","background":"#262730"},
-                "nav-link-selected":{"background":"#ff6600"}})
+tab = st.sidebar.radio("Navigate to", ["Query", "Layers", "Downloads"])
 
 if cfg["basemaps"]:
     st.session_state.setdefault("basemap", cfg["basemaps"][0]["name"])
@@ -50,49 +42,60 @@ NSW = (
 )
 geod = Geod(ellps="WGS84")
 
-def fetch_parcels(ids):
-    """Return {lotplan: {"geom": shapely, "props": dict}},  [not_found…]"""
+def fetch_parcels(ids, bbox=None):
+    """Return {lotplan: {"geom": shapely, "props": dict}}, [not_found…]"""
     out, miss = {}, []
     for lp in ids:
-        url, fld = (QLD, "lotplan") if re.match(r"^\d+[A-Z]{1,3}\d+$", lp, re.I) else (NSW, "lotidstring")
+        url, fld = (
+            (QLD, "lotplan")
+            if re.match(r"^\d+[A-Z]{1,3}\d+$", lp, re.I)
+            else (NSW, "lotidstring")
+        )
+        params = {
+            "where": f"{fld}='{lp}'",
+            "outFields": "*",
+            "returnGeometry": True,
+            "f": "geojson",
+        }
+        if bbox:
+            sw, ne = bbox
+            params.update({
+                "geometry": f"{sw[1]},{sw[0]},{ne[1]},{ne[0]}",
+                "geometryType": "esriGeometryEnvelope",
+                "inSR": 4326,
+                "spatialRel": "esriSpatialRelIntersects",
+            })
         try:
-            js = requests.get(
-                url,
-                params={"where": f"{fld}='{lp}'",
-                        "outFields": "*",
-                        "returnGeometry": "true",
-                        "f": "geojson"},
-                timeout=12,
-            ).json()
-
+            js = requests.get(url, params=params, timeout=12).json()
             feats = js.get("features", [])
             if not feats:
-                miss.append(lp); continue
-
+                miss.append(lp)
+                continue
             wkid = feats[0]["geometry"].get("spatialReference", {}).get("wkid", 4326)
             tfm = Transformer.from_crs(wkid, 4326, always_xy=True).transform if wkid != 4326 else None
-
             geoms, props = [], {}
             for ft in feats:
                 g = shape(ft["geometry"])
                 geoms.append(transform(tfm, g) if tfm else g)
                 props = ft["properties"]
-
             out[lp] = {"geom": unary_union(geoms), "props": props}
-
         except Exception:
             miss.append(lp)
     return out, miss
 
 def kml_colour(hexrgb, pct):   # AABBGGRR
-    r,g,b = hexrgb[1:3], hexrgb[3:5], hexrgb[5:7]
-    a = int(round(255*pct/100))
+    r, g, b = hexrgb[1:3], hexrgb[3:5], hexrgb[5:7]
+    a = int(round(255 * pct / 100))
     return f"{a:02x}{b}{g}{r}"
 
 # ────── TAB : QUERY ────────────────────────────────────────────────────────
 if tab == "Query":
     ids_txt = st.sidebar.text_area("Lot/Plan IDs", height=140,
                                    placeholder="6RP702264\n5//DP123456")
+    restrict = st.sidebar.checkbox(
+        "🔲 Restrict to map extent", value=False,
+        help="Only fetch parcels within the current map view"
+    )
     fx = st.sidebar.color_picker("Fill", "#ff6600")
     fo = st.sidebar.slider("Opacity %", 0, 100, 70)
     lx = st.sidebar.color_picker("Outline", "#2e2e2e")
@@ -101,31 +104,30 @@ if tab == "Query":
 
     if st.sidebar.button("🔍 Search") and ids_txt.strip():
         ids = [s.strip() for s in ids_txt.splitlines() if s.strip()]
+        folium_out = st.session_state.get("last_bounds")
+        bbox = folium_out if (restrict and folium_out) else None
         with st.spinner("Fetching parcels…"):
-            recs, miss = fetch_parcels(ids)
+            recs, miss = fetch_parcels(ids, bbox=bbox)
         if miss:
-            st.sidebar.warning("Not found: "+", ".join(miss))
-
+            st.sidebar.warning("Not found: " + ", ".join(miss))
         rows = []
         for lp, rec in recs.items():
             props = rec["props"]
             lottype = props.get("lottype") or props.get("PURPOSE") or "n/a"
-            area = abs(geod.geometry_area_perimeter(rec["geom"])[0])/1e4
-            rows.append({"Lot/Plan": lp, "Lot Type": lottype, "Area (ha)": round(area,2)})
-
+            area = abs(geod.geometry_area_perimeter(rec["geom"])[0]) / 1e4
+            rows.append({"Lot/Plan": lp, "Lot Type": lottype, "Area (ha)": round(area, 2)})
         st.session_state["parcels"] = recs
-        st.session_state["table"]   = pd.DataFrame(rows)
-        st.session_state["style"]   = dict(fill=fx, op=fo, line=lx, w=lw, folder=folder)
+        st.session_state["table"] = pd.DataFrame(rows)
+        st.session_state["style"] = dict(fill=fx, op=fo, line=lx, w=lw, folder=folder)
         st.sidebar.success(f"{len(recs)} parcel{'s'*(len(recs)!=1)} loaded.")
 
-# ────── TAB : LAYERS (basemap + overlays only) ─────────────────────────────
+# ────── TAB : LAYERS ───────────────────────────────────────────────────────
 if tab == "Layers":
     if cfg["basemaps"]:
         st.sidebar.subheader("Basemap")
         names = [b["name"] for b in cfg["basemaps"]]
         st.session_state["basemap"] = st.sidebar.radio("", names,
             index=names.index(st.session_state["basemap"]))
-
     st.sidebar.subheader("Static overlays")
     for o in cfg["overlays"]:
         st.session_state["ov_state"][o["name"]] = st.sidebar.checkbox(
@@ -134,54 +136,37 @@ if tab == "Layers":
 # ────── BUILD FOLIUM MAP ───────────────────────────────────────────────────
 m = folium.Map(location=[-25, 145], zoom_start=5,
                control_scale=True, width="100%", height="100vh")
-
-# basemap at bottom
+# basemap
 if cfg["basemaps"]:
     b = next(bb for bb in cfg["basemaps"] if bb["name"] == st.session_state["basemap"])
-    folium.TileLayer(b["url"], name=b["name"], attr=b["attr"],
-                     overlay=False, control=True, show=True).add_to(m)
-
+    folium.TileLayer(b["url"], name=b["name"], attr=b["attr"], overlay=False, control=True, show=True).add_to(m)
 # overlays
 for o in cfg["overlays"]:
     if not st.session_state["ov_state"][o["name"]]: continue
     try:
         if o["type"] == "wms":
-            folium.raster_layers.WmsTileLayer(
-                o["url"], layers=str(o["layers"]), transparent=True,
-                fmt=o.get("fmt", "image/png"), name=o["name"], attr=o["attr"],
-                version="1.1.1").add_to(m)
+            folium.raster_layers.WmsTileLayer(o["url"], layers=str(o["layers"]), transparent=True, fmt=o.get("fmt","image/png"), name=o["name"], attr=o["attr"], version="1.1.1").add_to(m)
         else:
             folium.TileLayer(o["url"], name=o["name"], attr=o["attr"]).add_to(m)
     except Exception as e:
         st.warning(f"{o['name']} failed: {e}")
-
-# parcels
-bounds = []
-if "parcels" in st.session_state:
+# parcels overlay
+enabled = "parcels" in st.session_state
+if enabled:
     s = st.session_state["style"]
-
-    def sty(_): return {"fillColor": s["fill"], "color": s["line"],
-                        "weight": s["w"], "fillOpacity": s["op"]/100}
-
+    def sty(_): return {"fillColor": s["fill"], "color": s["line"], "weight": s["w"], "fillOpacity": s["op"]/100}
     pg = folium.FeatureGroup(name="Parcels", show=True).add_to(m)
+    bounds = []
     for lp, rec in st.session_state["parcels"].items():
-        g, p = rec["geom"], rec["props"]
-        lottype = p.get("lottype") or p.get("PURPOSE") or "n/a"
-        area = abs(geod.geometry_area_perimeter(g)[0]) / 1e4
-        html = (f"<b>Lot/Plan:</b> {lp}<br>"
-                f"<b>Lot Type:</b> {lottype}<br>"
-                f"<b>Area:</b> {area:,.2f} ha")
-        folium.GeoJson(mapping(g), name=lp, style_function=sty,
-                       tooltip=lp, popup=html).add_to(pg)
-        bounds.append([[g.bounds[1], g.bounds[0]],
-                       [g.bounds[3], g.bounds[2]]])
-
-# zoom to parcels
-if bounds:
-    xs, ys, xe, ye = zip(*[(b[0][1], b[0][0], b[1][1], b[1][0]) for b in bounds])
-    m.fit_bounds([[min(ys), min(xs)], [max(ye), max(xe)]])
-
-st_folium(m, height=700, use_container_width=True, key="fol")
+        g = rec["geom"]
+        folium.GeoJson(mapping(g), name=lp, style_function=sty, tooltip=lp, popup=folium.Popup(f"<b>Lot/Plan:</b> {lp}<br><b>Area:</b> {abs(geod.geometry_area_perimeter(g)[0])/1e4:,.2f} ha")).add_to(pg)
+        bounds.append([[g.bounds[1],g.bounds[0]],[g.bounds[3],g.bounds[2]]])
+    if bounds:
+        ys, xs, ye, xe = zip(*( (b[0][0],b[0][1],b[1][0],b[1][1]) for b in bounds ))
+        m.fit_bounds([[min(ys),min(xs)], [max(ye),max(xe)]])
+# render map and capture bounds
+folium_out = st_folium(m, height=700, use_container_width=True, key="fol", return_bounds=True)
+st.session_state["last_bounds"] = folium_out.get("bounds")
 
 # ────── RESULTS TABLE + ACTION MENU + EXPORT-ALL BAR ──────────────────────
 if "table" in st.session_state and not st.session_state["table"].empty:
