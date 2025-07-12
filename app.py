@@ -9,11 +9,12 @@ Streamlit one-page app for parcel lookup & export.
 • Interactive AgGrid table under the map
     – Tick rows → Zoom / Export KML / Export SHP / Remove
 • Export-ALL bar (KML + Shapefile)
-"""
+"""   # ← **This closing quote is required!**
+
 import io
 import os
 import re
-import pathlib           # now this will import correctly
+import pathlib           # now imports correctly under Python 3.12
 import requests
 import tempfile
 import zipfile
