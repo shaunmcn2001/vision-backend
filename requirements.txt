@@ -1,7 +1,7 @@
 # ─── core UI ───
 streamlit==1.46.1
 streamlit-option-menu==0.3.6
-streamlit-folium==0.20.0
+streamlit-folium>=0.18.0
 streamlit-aggrid==0.3.4.post3
 
 # ─── mapping ───
