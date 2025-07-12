@@ -12,22 +12,15 @@ overlays:
     attr: © Esri, Maxar
 
 databases:
-  # QLD cadastral parcels as WMS (layer 4)
+databases:
   - name: QLD Cadastre
     type: wms
     url: https://spatial-gis.information.qld.gov.au/arcgis/services/PlanningCadastre/LandParcelPropertyFramework/MapServer/WMSServer
-    layers: Land Parcels          # ← use the Name, not the number
+    layers: Land_Parcels               # exact layer <Name> from GetCapabilities
     attr: © State of Queensland
 
-  # NSW cadastral parcels as WMS (layer 9)
   - name: NSW Cadastre
     type: wms
-    url: https://maps.six.nsw.gov.au/arcgis/rest/services/public/NSW_Cadastre/MapServer/9
-    layers: 9               # cadastral polygons
+    url: https://maps.six.nsw.gov.au/arcgis/services/public/NSW_Cadastre/MapServer/WMSServer
+    layers: cadparcels                 # exact layer <Name> from GetCapabilities
     attr: © NSW Spatial Services
-
-  # Example AGOL layer (GeoJSON) – optional
-  - name: Example AGOL layer
-    type: geojson
-    url: https://services8.arcgis.com/xxxxxxxx/ArcGIS/rest/services/MyLayer/FeatureServer/0/query?where=1%3D1&outSR=4326&f=pgeojson
-    attr: © Your Organisation
