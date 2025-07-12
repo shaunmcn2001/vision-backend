@@ -255,10 +255,14 @@ if "table" in st.session_state and not st.session_state["table"].empty:
     )
 
     # --- NEW robust selection handling ----------------------------------
-    sel_rows = grid.get("selected_rows", []) if isinstance(grid, dict) else getattr(grid, "selected_rows", [])
+    sel_rows = (
+        grid.get("selected_rows") if isinstance(grid, dict)
+        else getattr(grid, "selected_rows", None)
+    ) or []          # ensure we always have a list
+
     st.session_state["_sel"] = [
-    r.get("Lot/Plan") or r.get("Lot_Plan")  # AgGrid replaces '/' with '_'
-    for r in sel_rows
+        (r.get("Lot/Plan") or r.get("Lot_Plan"))
+        for r in sel_rows
     ]
 
     # Export-ALL bar
@@ -303,10 +307,10 @@ if "table" in st.session_state and not st.session_state["table"].empty:
 
     # Handle context-menu events
     if js and js.get("type") in {"zoom", "kml"}:
-        ids = [
-            r.get("Lot/Plan") or r.get("Lot_Plan")
-            for r in sel_rows
-        ] or st.session_state.get("_sel", [])
+    ids = [
+        (r.get("Lot/Plan") or r.get("Lot_Plan"))
+        for r in sel_rows
+    ] or st.session_state.get("_sel", [])
         geoms = [st.session_state["parcels"][i]["geom"] for i in ids]
 
         if js["type"] == "zoom":
