@@ -1,20 +1,25 @@
 #!/usr/bin/env python3
-# LAWD Parcel Toolkit  · 2025-07-12
+# LAWD Parcel Toolkit  · 2025-07-12 ❶
+
+"""
+Key updates (2025-07-12):
+• Export-ALL bar now offers only two formats – Shapefile (.shp in a ZIP) and KML – as requested.
+• Removed the **Pulse** visual effect and **Buffer 200 m** option from both the grid context-menu and the associated back-end logic.
+"""
 
 import io, re, json, yaml, pathlib, requests, tempfile, zipfile, os, base64
 from collections import defaultdict
 
 import streamlit as st
 from streamlit_option_menu import option_menu
-from streamlit_folium import st_folium
+from streamlit_folium import st_folium, get_last_msg
 from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode
 
 import folium, simplekml, geopandas as gpd, pandas as pd
 from shapely.geometry import shape, mapping, Polygon
 from shapely.ops import unary_union, transform
 from pyproj import Transformer, Geod
-import uuid
-import time
+import uuid, time
 
 # ────── STATIC CONFIG (basemap + overlays only) ────────────────────────────
 CFG = pathlib.Path("layers.yaml")
@@ -144,33 +149,37 @@ if cfg["basemaps"]:
     folium.TileLayer(b["url"], name=b["name"], attr=b["attr"], overlay=False, control=True, show=True).add_to(m)
 # overlays
 for o in cfg["overlays"]:
-    if not st.session_state["ov_state"][o["name"]]: continue
+    if not st.session_state["ov_state"][o["name"]]:
+        continue
     try:
         if o["type"] == "wms":
-            folium.raster_layers.WmsTileLayer(o["url"], layers=str(o["layers"]), transparent=True, fmt=o.get("fmt","image/png"), name=o["name"], attr=o["attr"], version="1.1.1").add_to(m)
+            folium.raster_layers.WmsTileLayer(o["url"], layers=str(o["layers"]), transparent=True, fmt=o.get("fmt", "image/png"), name=o["name"], attr=o["attr"], version="1.1.1").add_to(m)
         else:
             folium.TileLayer(o["url"], name=o["name"], attr=o["attr"]).add_to(m)
     except Exception as e:
         st.warning(f"{o['name']} failed: {e}")
 # parcels overlay
-enabled = "parcels" in st.session_state
-if enabled:
+if "parcels" in st.session_state:
     s = st.session_state["style"]
-    def sty(_): return {"fillColor": s["fill"], "color": s["line"], "weight": s["w"], "fillOpacity": s["op"]/100}
+    def sty(_):
+        return {"fillColor": s["fill"], "color": s["line"], "weight": s["w"], "fillOpacity": s["op"]/100}
     pg = folium.FeatureGroup(name="Parcels", show=True).add_to(m)
     bounds = []
     for lp, rec in st.session_state["parcels"].items():
         g = rec["geom"]
-        folium.GeoJson(mapping(g), name=lp, style_function=sty, tooltip=lp, popup=folium.Popup(f"<b>Lot/Plan:</b> {lp}<br><b>Area:</b> {abs(geod.geometry_area_perimeter(g)[0])/1e4:,.2f} ha")).add_to(pg)
-        bounds.append([[g.bounds[1],g.bounds[0]],[g.bounds[3],g.bounds[2]]])
+        folium.GeoJson(mapping(g), name=lp, style_function=sty,
+                       tooltip=lp,
+                       popup=folium.Popup(f"<b>Lot/Plan:</b> {lp}<br><b>Area:</b> {abs(geod.geometry_area_perimeter(g)[0])/1e4:,.2f} ha")).add_to(pg)
+        bounds.append([[g.bounds[1], g.bounds[0]], [g.bounds[3], g.bounds[2]]])
     if bounds:
-        ys, xs, ye, xe = zip(*( (b[0][0],b[0][1],b[1][0],b[1][1]) for b in bounds ))
-        m.fit_bounds([[min(ys),min(xs)], [max(ye),max(xe)]])
+        ys, xs, ye, xe = zip(*((b[0][0], b[0][1], b[1][0], b[1][1]) for b in bounds))
+        m.fit_bounds([[min(ys), min(xs)], [max(ye), max(xe)]])
+
 # render map and capture bounds
 folium_out = st_folium(m, height=700, use_container_width=True, key="fol", return_bounds=True)
 st.session_state["last_bounds"] = folium_out.get("bounds")
 
-# ────── RESULTS TABLE + ACTION MENU + EXPORT-ALL BAR ──────────────────────
+# ────── RESULTS TABLE + ACTION MENU + EXPORT-ALL BAR ─────────────────────
 if "table" in st.session_state and not st.session_state["table"].empty:
 
     st.subheader("Query results")
@@ -179,18 +188,14 @@ if "table" in st.session_state and not st.session_state["table"].empty:
                            geometry=[rec["geom"] for rec in st.session_state["parcels"].values()],
                            crs=4326)
 
-    gob = GridOptionsBuilder.from_dataframe(
-        gdf.drop(columns="geometry"), enableRowGroup=False)
+    # -------- Grid & Context Menu (Pulse + Buffer removed) --------
+    gob = GridOptionsBuilder.from_dataframe(gdf.drop(columns="geometry"), enableRowGroup=False)
     gob.configure_selection("multiple", use_checkbox=True)
     gob.configure_grid_options(
         getContextMenuItems="""function(p){
            var z=[ 'copy', 'separator',
              { name:'Zoom to result(s)', action:()=>window.postMessage({type:'zoom'}) },
-             { name:'Pulse', action:()=>window.postMessage({type:'pulse'}) },
-             { name:'Buffer 200 m', action:()=>window.postMessage({type:'buffer'}) },
              'separator',
-             { name:'Export to CSV', action:()=>window.postMessage({type:'csv'}) },
-             { name:'Export to XLSX', action:()=>window.postMessage({type:'xlsx'}) },
              { name:'Export to Shapefile', action:()=>window.postMessage({type:'shp'}) },
              'separator',
              { name:'Remove result(s)', action:()=>window.postMessage({type:'remove'}) }]; return z; }""")
@@ -203,30 +208,45 @@ if "table" in st.session_state and not st.session_state["table"].empty:
         height=250,
     )
 
-    # Export-ALL bar  (CSV / XLSX / SHP)
-    col1,col2,col3 = st.columns(3)
+    # ---------------- Export-ALL (Shapefile + KML) ----------------
+    col1, col2 = st.columns(2)
     with col1:
-        csv_all = st.session_state["table"].to_csv(index=False).encode()
-        st.download_button("⬇️ Export ALL (CSV)", csv_all, "results.csv", "text/csv")
-    with col2:
-        from io import BytesIO
-        bio = BytesIO(); st.session_state["table"].to_excel(bio, index=False); bio.seek(0)
-        st.download_button("⬇️ Export ALL (XLSX)", bio.getvalue(),
-                           "results.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-    with col3:
+        # Shapefile
         tmp = tempfile.mkdtemp()
-        gdf.to_file(tmp+"/parcels.shp")
-        zname = pathlib.Path(tmp,"parcels.zip")
-        with zipfile.ZipFile(zname,"w",zipfile.ZIP_DEFLATED) as z:
+        gdf.to_file(tmp + "/parcels.shp")
+        zname = pathlib.Path(tmp, "parcels.zip")
+        with zipfile.ZipFile(zname, "w", zipfile.ZIP_DEFLATED) as z:
             for f in pathlib.Path(tmp).glob("parcels.*"):
                 z.write(f, f.name)
-        zbytes = open(zname,"rb").read()
+        zbytes = open(zname, "rb").read()
         st.download_button("⬇️ Export ALL (Shapefile)", zbytes,
                            "parcels.zip", "application/zip")
+    with col2:
+        # KML
+        s = st.session_state["style"]; gs = st.session_state["parcels"]
+        kml = simplekml.Kml(); fld = kml.newfolder(name=s["folder"])
+        fk, lk = kml_colour(s["fill"], s["op"]), kml_colour(s["line"], 100)
+        for lp, rec in gs.items():
+            g = rec["geom"]
+            polys = [g] if isinstance(g, Polygon) else list(g.geoms)
+            for i, p in enumerate(polys, 1):
+                area = abs(geod.geometry_area_perimeter(p)[0]) / 1e4
+                nm = f"{lp} ({i})" if len(polys) > 1 else lp
+                desc = f"Lot/Plan: {lp}<br>Area: {area:,.2f} ha"
+                pl = fld.newpolygon(name=nm, description=desc,
+                                    outerboundaryis=p.exterior.coords)
+                for r in p.interiors:
+                    pl.innerboundaryis.append(r.coords)
+                pl.style.polystyle.color = fk
+                pl.style.linestyle.color = lk
+                pl.style.linestyle.width = float(s["w"])
+        st.download_button("⬇️ Export ALL (KML)",
+                           io.BytesIO(kml.kml().encode()).getvalue(),
+                           "parcels.kml", "application/vnd.google-earth.kml+xml")
 
     # ---------- handle row-level actions ----------
-    js_msg = st_folium.get_last_msg()
-    if js_msg and js_msg.get("type") in {"zoom","pulse","buffer","csv","xlsx","shp","remove"}:
+    js_msg = get_last_msg()
+    if js_msg and js_msg.get("type") in {"zoom", "shp", "remove"}:
         sel_rows = grid["selected_rows"]
         if not sel_rows:
             st.warning("No rows selected."); st.stop()
@@ -239,42 +259,17 @@ if "table" in st.session_state and not st.session_state["table"].empty:
             st.session_state["__zoom_bounds"] = [[bb[1], bb[0]], [bb[3], bb[2]]]
             st.experimental_rerun()
 
-        elif js_msg["type"] == "pulse":
-            import uuid, time
-            pulse = folium.GeoJson({'type':'FeatureCollection',
-                                    'features':[mapping(g) for g in sel_geoms]},
-                                   style_function=lambda _:{'color':'red','weight':4,'fillOpacity':0})
-            pulse.add_to(m)
-            st_folium(m, key=str(uuid.uuid4()), height=700, use_container_width=True)
-            time.sleep(2); st.experimental_rerun()
-
-        elif js_msg["type"] == "buffer":
-            buf = gpd.GeoSeries(sel_geoms, crs=4326).to_crs(3857).buffer(200).to_crs(4326)
-            folium.GeoJson(buf.__geo_interface__,
-                           style_function=lambda _:{'color':'blue','weight':2,'fillOpacity':0.1}
-                          ).add_to(m)
-            st_folium(m, key="buf", height=700, use_container_width=True)
-
-        elif js_msg["type"] in {"csv","xlsx","shp"}:
-            df_sel = st.session_state["table"][st.session_state["table"]["Lot/Plan"].isin(sel_ids)]
-            if js_msg["type"] == "csv":
-                st.download_button("Download CSV", df_sel.to_csv(index=False).encode(),
-                                   "selected.csv", "text/csv")
-            elif js_msg["type"] == "xlsx":
-                bio2 = BytesIO(); df_sel.to_excel(bio2, index=False); bio2.seek(0)
-                st.download_button("Download XLSX", bio2.getvalue(),
-                                   "selected.xlsx",
-                                   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-            else:  # shapefile
-                tmp2 = tempfile.mkdtemp()
-                gpd.GeoDataFrame(df_sel, geometry=sel_geoms, crs=4326
-                                 ).to_file(tmp2+"/sel.shp")
-                zsel = pathlib.Path(tmp2, "selected.zip")
-                with zipfile.ZipFile(zsel, "w", zipfile.ZIP_DEFLATED) as z:
-                    for f in pathlib.Path(tmp2).glob("sel.*"):
-                        z.write(f, f.name)
-                st.download_button("Download Shapefile ZIP",
-                                   open(zsel,"rb").read(), "selected.zip","application/zip")
+        elif js_msg["type"] == "shp":
+            # Export selected rows as Shapefile (ZIP)
+            tmp2 = tempfile.mkdtemp()
+            gpd.GeoDataFrame(st.session_state["table"][st.session_state["table"]["Lot/Plan"].isin(sel_ids)],
+                             geometry=sel_geoms, crs=4326).to_file(tmp2 + "/sel.shp")
+            zsel = pathlib.Path(tmp2, "selected.zip")
+            with zipfile.ZipFile(zsel, "w", zipfile.ZIP_DEFLATED) as z:
+                for f in pathlib.Path(tmp2).glob("sel.*"):
+                    z.write(f, f.name)
+            st.download_button("Download Shapefile ZIP",
+                               open(zsel, "rb").read(), "selected.zip", "application/zip")
 
         elif js_msg["type"] == "remove":
             for lp in sel_ids:
