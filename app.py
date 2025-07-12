@@ -171,7 +171,7 @@ if "table" in st.session_state and not st.session_state["table"].empty:
     df=st.session_state["table"].copy(); df["⋮"]="⋮"
     gdf=gpd.GeoDataFrame(df,geometry=[r["geom"] for r in st.session_state["parcels"].values()],crs=4326)
 
-    MENU_JS = """
+    MENU_JS = 
     class ActionCell {
       init(params) {
         this.params = params;
@@ -199,7 +199,7 @@ if "table" in st.session_state and not st.session_state["table"].empty:
       }
       getGui(){return this.eGui;}
     }
-    """
+    
 
     gob = GridOptionsBuilder.from_dataframe(gdf.drop(columns="geometry"))
     gob.configure_selection("multiple",use_checkbox=True)
