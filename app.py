@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# LAWD Parcel Toolkit  · 2025-07
+# LAWD Parcel Toolkit · 2025-07-12
 
 """
 Streamlit one-page app for parcel lookup & export.
@@ -9,12 +9,12 @@ Streamlit one-page app for parcel lookup & export.
 • Interactive AgGrid table under the map
     – Tick rows → Zoom / Export KML / Export SHP / Remove
 • Export-ALL bar (KML + Shapefile)
-"""   # ← **This closing quote is required!**
+"""
 
 import io
 import os
 import re
-import pathlib           # now imports correctly under Python 3.12
+import pathlib
 import requests
 import tempfile
 import zipfile
@@ -220,13 +220,20 @@ js = folium_data.get("js_events", [])[-1] if folium_data.get("js_events") else N
 if "table" in st.session_state and not st.session_state["table"].empty:
     st.subheader("Query Results")
 
+    # Add ellipsis column for per-row actions
+    df = st.session_state["table"].copy()
+    df["⋮"] = "⋮"
+
     gdf = gpd.GeoDataFrame(
-        st.session_state["table"],
+        df,
         geometry=[rec["geom"] for rec in st.session_state["parcels"].values()],
         crs=4326
     )
     gob = GridOptionsBuilder.from_dataframe(gdf.drop(columns="geometry"))
     gob.configure_selection("multiple", use_checkbox=True)
+    gob.configure_column("⋮", header_name="", width=60,
+                         cellRenderer="""(p)=>'<span style="cursor:pointer">⋮</span>'""",
+                         suppressMenu=True)
     gob.configure_grid_options(
         getContextMenuItems="""function(p){
             return [
@@ -247,9 +254,76 @@ if "table" in st.session_state and not st.session_state["table"].empty:
         height=250,
     )
 
+    # Persist selection for highlight
+    st.session_state["_sel"] = [r["Lot/Plan"] for r in grid["selected_rows"]]
+
     # Export-ALL bar
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("Export ALL (KML)"):
+    with st.expander("Export ALL", expanded=True):
+        colA, colB = st.columns(2)
+        if colA.button("Generate KML"):
             kml = simplekml.Kml()
             fld = kml.newfolder(name=st.session_state["style"]["folder"])
+            fk = kml_colour(st.session_state["style"]["fill"], st.session_state["style"]["op"])
+            lk = kml_colour(st.session_state["style"]["line"], 100)
+            for lp, rec in st.session_state["parcels"].items():
+                geom = rec["geom"]
+                polys = [geom] if isinstance(geom, Polygon) else list(geom.geoms)
+                for i, p in enumerate(polys, 1):
+                    nm = f"{lp} ({i})" if len(polys) > 1 else lp
+                    desc = f"Lot/Plan: {lp}<br>Area: {abs(g_geod.geometry_area_perimeter(p)[0]) / 1e4:,.2f} ha"
+                    poly = fld.newpolygon(name=nm, description=desc, outerboundaryis=p.exterior.coords)
+                    for ring in p.interiors:
+                        poly.innerboundaryis.append(ring.coords)
+                    poly.style.polystyle.color = fk
+                    poly.style.linestyle.color = lk
+                    poly.style.linestyle.width = float(st.session_state["style"]["w"])
+            st.download_button("Download KML",
+                               io.BytesIO(kml.kml().encode()),
+                               "parcels.kml",
+                               "application/vnd.google-earth.kml+xml")
+        if colB.button("Generate SHP"):
+            tmp = tempfile.mkdtemp()
+            gpd.GeoDataFrame(
+                st.session_state["table"],
+                geometry=[rec["geom"] for rec in st.session_state["parcels"].values()],
+                crs=4326
+            ).to_file(tmp + "/all.shp")
+            zpath = pathlib.Path(tmp, "all.zip")
+            with zipfile.ZipFile(zpath, "w", zipfile.ZIP_DEFLATED) as zf:
+                for f in pathlib.Path(tmp).glob("all.*"):
+                    zf.write(f, f.name)
+            st.download_button("Download SHP",
+                               open(zpath, "rb"),
+                               "parcels.zip",
+                               "application/zip")
+
+    # Handle context-menu events
+    if js and js.get("type") in {"zoom", "kml"}:
+        ids = [r["Lot/Plan"] for r in grid["selected_rows"]] or st.session_state.get("_sel", [])
+        geoms = [st.session_state["parcels"][i]["geom"] for i in ids]
+
+        if js["type"] == "zoom":
+            bb = gpd.GeoSeries(geoms).total_bounds
+            st.session_state["__zoom"] = [[bb[1], bb[0]], [bb[3], bb[2]]]
+            st.experimental_rerun()
+
+        elif js["type"] == "kml":
+            kml = simplekml.Kml()
+            fk = kml_colour(st.session_state["style"]["fill"], st.session_state["style"]["op"])
+            lk = kml_colour(st.session_state["style"]["line"], 100)
+            for lp in ids:
+                geom = st.session_state["parcels"][lp]["geom"]
+                poly = kml.newpolygon(name=lp,
+                                      outerboundaryis=geom.exterior.coords if isinstance(geom, Polygon)
+                                      else list(geom.geoms)[0].exterior.coords)
+                poly.style.polystyle.color = fk
+                poly.style.linestyle.color = lk
+                poly.style.linestyle.width = float(st.session_state["style"]["w"])
+            st.download_button("Download Selected KML",
+                               io.BytesIO(kml.kml().encode()),
+                               "selected.kml",
+                               "application/vnd.google-earth.kml+xml")
+
+# Honor zoom request (if any)
+if "__zoom" in st.session_state:
+    map_obj.fit_bounds(st.session_state.pop("__zoom"))
