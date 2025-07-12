@@ -1,26 +1,13 @@
-# ─── core UI ───
-streamlit==1.46.1
-streamlit-option-menu==0.3.6
-streamlit-folium>=0.18.0
-streamlit-aggrid==0.3.4.post3
-
-# ─── mapping ───
-folium==0.16.0
-
-# ─── data frames & export ───
-pandas>=2.2
-openpyxl>=3.1
-
-# ─── vector / geospatial wheels (no GDAL compile) ───
-geopandas==0.14.4
-shapely==2.0.3
-pyproj==3.6.1
-fiona==1.9.6          # shapefile writer
-
-# ─── misc helpers ───
-PyYAML==6.0.1
-requests
-simplekml
-
-# ─── optional Azure blob upload ───
-azure-storage-blob==12.20.0
+ streamlit==1.18.1
+ streamlit-option-menu==0.3.6
+-streamlit-folium==0.17.0
++streamlit-folium>=0.18.0
+ st-aggrid==0.3.2
+ folium==0.16.0
+ simplekml==1.4.1
+ geopandas==0.14.4
++pandas==2.0.3
++pyyaml>=6.0
++shapely>=2.0.1
+ pyproj==3.6.1
++uuid
