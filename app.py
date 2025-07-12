@@ -27,31 +27,40 @@ layers_cfg = load_registry()
 # ---------- nice glass-dark overlay -------------------------------
 def show_overlay(msg: str, pct: int | None):
     """Create/update/remove a full-page overlay with a progress bar.
-       pct=None removes it."""
-    key = "upload_overlay"
+       Call with pct=None to remove."""
+    ph = st.session_state.get("_overlay_ph")     # placeholder cache
+
+    # remove overlay ────────────────────────────
     if pct is None:
-        st.session_state.pop(key, None)
+        if ph: ph.empty()
+        st.session_state["_overlay_ph"] = None
         return
-    st.markdown(f"""
+
+    # build HTML ────────────────────────────────
+    html = f"""
     <style>
     .overlay {{
       position:fixed; inset:0; z-index:9999;
-      backdrop-filter: blur(4px) brightness(.35);
-      display:flex; flex-direction:column;
-      justify-content:center; align-items:center;
+      backdrop-filter:blur(4px) brightness(.35);
+      display:flex;flex-direction:column;justify-content:center;align-items:center;
     }}
-    .bar {{width:60%;max-width:400px;height:10px;
-           background:#555;border-radius:6px;overflow:hidden;
-           box-shadow:0 0 10px #000 inset}}
-    .bar>div {{height:100%;width:{pct}% ;
+    .bar {{width:60%;max-width:400px;height:10px;background:#555;
+           border-radius:6px;overflow:hidden;box-shadow:0 0 10px #000 inset}}
+    .bar>div {{width:{pct}%;height:100%;
                background:linear-gradient(90deg,#ff6600 0%,#ffaa00 100%);
                transition:width .25s}}
     .txt {{color:#fff;font-weight:600;margin-top:18px}}
     </style>
     <div class='overlay'>
-       <div class='bar'><div></div></div>
-       <div class='txt'>{msg}</div>
-    </div>""", unsafe_allow_html=True, key=key)
+      <div class='bar'><div></div></div>
+      <div class='txt'>{msg}</div>
+    </div>"""
+
+    # create placeholder once, then update
+    if not ph:
+        ph = st.empty()
+        st.session_state["_overlay_ph"] = ph
+    ph.markdown(html, unsafe_allow_html=True)
 
 # ---------- Azure upload helper -----------------------------------
 def upload_to_azure(uploaded_file) -> str:
