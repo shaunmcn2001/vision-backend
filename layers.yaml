@@ -1,25 +1,24 @@
-# layers.yaml ─ static catalogue
+# layers.yaml  ─ LAWD Parcel Toolkit configuration
+# -------------------------------------------------
+# Add or edit entries in any of the three sections below.
+# type can be:  tile   |   wms   |   geojson
 
+# ---------- Basemaps ----------
 basemaps:
   - name: OpenStreetMap
     url: https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png
-    attr: © OpenStreetMap contrib.
+    attr: © OpenStreetMap contributors
 
+# ---------- Optional Overlays ----------
 overlays:
   - name: Esri Imagery
     type: tile
     url: https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}
-    attr: © Esri
+    attr: © Esri, Maxar
 
-databases:          # «map services you can toggle»
-  # QLD cadastre parcel polygons
-  - name: QLD Cadastre
-    type: wms
-    url: https://spatial-gis.information.qld.gov.au/arcgis/services/PlanningCadastre/LandParcelPropertyFramework/MapServer/WMSServer
-    layers: 4
-    attr: © QLD Gov
-
- databases:
+# ---------- Databases / GIS layers ----------
+databases:
+  # QLD cadastral parcels (polygon layer 4)
   - name: QLD Cadastre
     type: tile
     url: >-
@@ -27,9 +26,17 @@ databases:          # «map services you can toggle»
       PlanningCadastre/LandParcelPropertyFramework/MapServer/tile/{z}/{y}/{x}
     attr: © State of Queensland (Dept Resources)
 
+  # NSW cadastral parcels (polygon layer 9)
   - name: NSW Cadastre
     type: tile
     url: >-
       https://maps.six.nsw.gov.au/arcgis/rest/services/public/
       NSW_Cadastre/MapServer/tile/{z}/{y}/{x}
     attr: © NSW Spatial Services
+
+  # Example ArcGIS Online layer exposed as GeoJSON
+  # Replace this URL with your own AGOL “GeoJSON” endpoint or delete.
+  - name: Example AGOL layer
+    type: geojson
+    url: https://services8.arcgis.com/xxxxxxxx/ArcGIS/rest/services/MyLayer/FeatureServer/0/query?where=1%3D1&outSR=4326&f=pgeojson
+    attr: © Your Organisation
