@@ -304,9 +304,9 @@ if "table" in st.session_state and not st.session_state["table"].empty:
     # Handle context-menu events
     if js and js.get("type") in {"zoom", "kml"}:
         ids = [
-    r.get("Lot/Plan") or r.get("Lot_Plan")
-    for r in sel_rows
-] or st.session_state.get("_sel", [])
+            r.get("Lot/Plan") or r.get("Lot_Plan")
+            for r in sel_rows
+        ] or st.session_state.get("_sel", [])
         geoms = [st.session_state["parcels"][i]["geom"] for i in ids]
 
         if js["type"] == "zoom":
