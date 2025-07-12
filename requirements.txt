@@ -1,15 +1,26 @@
+# ─── core UI ───
 streamlit==1.46.1
 streamlit-option-menu==0.3.6
-folium==0.16.0
 streamlit-folium==0.20.0
-azure-storage-blob==12.20.0
+streamlit-aggrid==0.3.4.post3
 
-# ─── vector-conversion wheel set (Python ≤ 3.12) ───
+# ─── mapping ───
+folium==0.16.0
+
+# ─── data frames & export ───
+pandas>=2.2
+openpyxl>=3.1
+
+# ─── vector / geospatial wheels (no GDAL compile) ───
 geopandas==0.14.4
-fiona==1.9.6           # enables KML & SHP read
-shapely==2.0.3         # version that ships wheel
-pyproj==3.6.1          # wheel that matches 0.14.x pandas
+shapely==2.0.3
+pyproj==3.6.1
+fiona==1.9.6          # shapefile writer
 
+# ─── misc helpers ───
 PyYAML==6.0.1
 requests
 simplekml
+
+# ─── optional Azure blob upload ───
+azure-storage-blob==12.20.0
