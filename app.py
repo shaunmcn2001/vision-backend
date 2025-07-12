@@ -1,43 +1,29 @@
 #!/usr/bin/env python3
 # LAWD Parcel Toolkit  · 2025-07
 
-"""
-Streamlit one-page app for parcel lookup & export.
-─────────────────────────────────────────────────
-• Compact sidebar (IDs + Style expander)
-• Folium map with parcels layer
-• Interactive AgGrid table under the map
-    – Tick rows → Zoom / Export KML / Export SHP / Remove
-• Export-ALL bar (KML + Shapefile)
-"""
-
-import io
-import os
-import re
-import yaml
-import pathlib
-import requests
-import tempfile
-import zipfile
-import uuid
-import shutil
-
+import io, re, pathlib, requests, tempfile, zipfile, uuid, shutil, os
 import streamlit as st
+
+# ───────────── Safely import PyYAML ───────────────────
+try:
+    import yaml
+except ImportError:
+    yaml = None
+
 from streamlit_option_menu import option_menu
 from streamlit_folium import st_folium
 from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode
-
-import folium
-import simplekml
-import geopandas as gpd
-import pandas as pd
+import folium, simplekml, geopandas as gpd, pandas as pd
 from shapely.geometry import shape, mapping, Polygon
 from shapely.ops import unary_union, transform
 from pyproj import Transformer, Geod
 
-# ───────────────────── STATIC CONFIG ────────────────────────────────────
+# ─────────────── STATIC CONFIG ────────────────────────
 CFG = pathlib.Path("layers.yaml")
-cfg = yaml.safe_load(CFG.read_text()) if CFG.exists() else {}
+if yaml and CFG.exists():
+    cfg = yaml.safe_load(CFG.read_text())
+else:
+    cfg = {}
 for k in ("basemaps", "overlays"):
     cfg.setdefault(k, [])
 
