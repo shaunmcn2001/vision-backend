@@ -10,9 +10,8 @@ basemaps:
     attr: © OpenStreetMap contributors
 
 # ---------- Optional Overlays ----------
-overlays:
+basemaps:
   - name: Esri Imagery
-    type: tile
     url: https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}
     attr: © Esri, Maxar
 
