@@ -156,26 +156,78 @@ if "table" in st.session_state and not st.session_state["table"].empty:
     col3.download_button("Export ALL SHP", open(zipf,"rb").read(),
                          "parcels.zip","application/zip")
 
-    # — handle row-level actions (zoom, pulse, export selected, remove) —
-    def handle(action, rows):
-        if not rows: st.warning("No rows selected"); return
-        ids=[r["Lot/Plan"] for r in rows]
-        geoms=[st.session_state["parcels"][i]["geom"] for i in ids]
-        if action=="zoom":
-            bb=gpd.GeoSeries(geoms).total_bounds
-            xs,ys,xe,ye=bb; st.session_state["__zoom_bounds"]=[[ys,xs],[ye,xe]]
-        elif action=="pulse":
-            st.session_state["__pulse"]=[mapping(g) for g in geoms]
-        elif action=="buffer":
-            buf=gpd.GeoSeries(geoms,crs=4326).to_crs(3857).buffer(200).to_crs(4326)
-            st.session_state["__buffer"]=buf.__geo_interface__
-        elif action in {"csv","xlsx","shp"}:
-            df=st.session_state["table"][st.session_state["table"]["Lot/Plan"].isin(ids)]
-            if action=="csv":
-                st.download_button("Download CSV", df.to_csv(index=False).encode(),
-                    "selected.csv","text/csv",key=str(uuid.uuid4()))
-            elif action=="xlsx":
-                bio2=io.BytesIO(); df.to_excel(bio2,index=False); bio2.seek(0)
-                st.download_button("Download XLSX", bio2.getvalue(),
-                    "selected.xlsx","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    key=str(uuid.dj
+       # –– handle row-level actions ––––––––––––––––––––––––––––––––––
+    def handle(action: str, rows: list[dict]):
+        if not rows:
+            st.warning("No rows selected."); return
+
+        ids   = [r["Lot/Plan"] for r in rows]
+        geoms = [st.session_state["parcels"][i]["geom"] for i in ids]
+
+        if action == "zoom":
+            bb = gpd.GeoSeries(geoms).total_bounds
+            st.session_state["__zoom_bounds"] = [[bb[1], bb[0]], [bb[3], bb[2]]]
+
+        elif action == "pulse":
+            st.session_state["__pulse"] = [mapping(g) for g in geoms]
+
+        elif action == "buffer":
+            buf = gpd.GeoSeries(geoms, crs=4326).to_crs(3857).buffer(200).to_crs(4326)
+            st.session_state["__buffer"] = buf.__geo_interface__
+
+        elif action in {"csv", "xlsx", "shp"}:
+            df = st.session_state["table"][st.session_state["table"]["Lot/Plan"].isin(ids)]
+
+            if action == "csv":
+                st.download_button("Download selected CSV",
+                                   df.to_csv(index=False).encode(),
+                                   "selected.csv", "text/csv",
+                                   key=str(uuid.uuid4()))
+
+            elif action == "xlsx":
+                bio = io.BytesIO(); df.to_excel(bio, index=False); bio.seek(0)
+                st.download_button("Download selected XLSX",
+                                   bio.getvalue(), "selected.xlsx",
+                                   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                   key=str(uuid.uuid4()))
+
+            else:  # shapefile
+                tmp = tempfile.mkdtemp()
+                gpd.GeoDataFrame(df, geometry=geoms, crs=4326).to_file(tmp + "/sel.shp")
+                zf  = pathlib.Path(tmp, "sel.zip")
+                with zipfile.ZipFile(zf, "w", zipfile.ZIP_DEFLATED) as z:
+                    for f in pathlib.Path(tmp).glob("sel.*"): z.write(f, f.name)
+                st.download_button("Download selected SHP",
+                                   open(zf, "rb").read(), "selected.zip",
+                                   "application/zip",
+                                   key=str(uuid.uuid4()))
+
+        elif action == "remove":
+            for lp in ids:
+                st.session_state["parcels"].pop(lp, None)
+            st.session_state["table"] = st.session_state["table"][
+                ~st.session_state["table"]["Lot/Plan"].isin(ids)
+            ]
+            st.experimental_rerun()
+
+    # listen for menu clicks coming back from JS
+    js = st_folium.get_last_msg()
+    if js and js.get("type"):
+        handle(js["type"], grid["selected_rows"])
+
+# ─── apply zoom / pulse / buffer requests on the map ––––––––––––––––––––
+if "__zoom_bounds" in st.session_state:
+    m.fit_bounds(st.session_state.pop("__zoom_bounds"))
+
+if "__pulse" in st.session_state:
+    pl = folium.GeoJson({"type": "FeatureCollection",
+                         "features": st.session_state.pop("__pulse")},
+                        style_function=lambda _:
+                            {"color": "red", "weight": 4, "fillOpacity": 0})
+    pl.add_to(m)
+
+if "__buffer" in st.session_state:
+    folium.GeoJson(st.session_state.pop("__buffer"),
+                   style_function=lambda _:
+                       {"color": "blue", "weight": 2, "fillOpacity": 0.1}
+                  ).add_to(m)
