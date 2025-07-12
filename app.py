@@ -240,7 +240,7 @@ if "table" in st.session_state and not st.session_state["table"].empty:
               'copy','separator',
               { name:'Zoom to result(s)', action:()=>window.postMessage({type:'zoom'}) },
               { name:'Export KML',         action:()=>window.postMessage({type:'kml'}) },
-              { name:'Export SHP',        action:()=>window.postMessage({type:'shp'}) },
+              { name:'Export SHP',         action:()=>window.postMessage({type:'shp'}) },
               'separator',
               { name:'Remove result(s)',   action:()=>window.postMessage({type:'remove'}) }
             ];
@@ -254,8 +254,9 @@ if "table" in st.session_state and not st.session_state["table"].empty:
         height=250,
     )
 
-    # Persist selection for highlight
-    st.session_state["_sel"] = [r["Lot/Plan"] for r in grid.selected_rows]
+    # --- NEW robust selection handling ----------------------------------
+    sel_rows = grid.get("selected_rows", []) if isinstance(grid, dict) else getattr(grid, "selected_rows", [])
+    st.session_state["_sel"] = [r["Lot/Plan"] for r in sel_rows]
 
     # Export-ALL bar
     with st.expander("Export ALL", expanded=True):
@@ -299,7 +300,7 @@ if "table" in st.session_state and not st.session_state["table"].empty:
 
     # Handle context-menu events
     if js and js.get("type") in {"zoom", "kml"}:
-        ids = [r["Lot/Plan"] for r in grid.selected_rows] or st.session_state.get("_sel", [])
+        ids = [r["Lot/Plan"] for r in sel_rows] or st.session_state.get("_sel", [])
         geoms = [st.session_state["parcels"][i]["geom"] for i in ids]
 
         if js["type"] == "zoom":
