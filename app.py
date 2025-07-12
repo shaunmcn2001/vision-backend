@@ -6,8 +6,7 @@ Streamlit one-page app for parcel lookup & export.
 ──────────────────────────────────────────────────
 • Compact sidebar (IDs + Style expander)
 • Folium map with parcels layer
-• Interactive AgGrid table with per-row ⋮ menu:
-    – Zoom / Export KML / Export SHP / Remove
+• AgGrid table with per-row ⋮ menu (Zoom / KML / Remove)
 • Export-ALL bar (KML + Shapefile)
 """
 
@@ -36,14 +35,13 @@ except ImportError:
 for k in ("basemaps", "overlays"):
     cfg.setdefault(k, [])
 
-# ───────────────────── STREAMLIT SHELL ───────────────────
+# ───────────────────── STREAMLIT HEADER ──────────────────
 st.set_page_config("Lot/Plan Toolkit", "📍", layout="wide",
                    initial_sidebar_state="collapsed")
 st.markdown(
     "<div style='background:#ff6600;color:#fff;font-size:20px;font-weight:600;"
     "padding:6px 20px;border-radius:8px;margin-bottom:6px'>"
-    "LAWD – Parcel Toolkit</div>",
-    unsafe_allow_html=True)
+    "LAWD – Parcel Toolkit</div>", unsafe_allow_html=True)
 
 with st.sidebar:
     tab = option_menu(
@@ -65,7 +63,7 @@ NSW = ("https://maps.six.nsw.gov.au/arcgis/rest/services/public/"
        "NSW_Cadastre/MapServer/9/query")
 
 def fetch_parcels(ids):
-    """Return {lotplan: {geom,props}},  [missing]"""
+    """Return {lotplan:{geom,props}}, [missing]"""
     out, miss = {}, []
     for lp in ids:
         url, fld = (QLD, "lotplan") if re.match(r"^\d+[A-Z]{1,3}\d+$", lp, re.I) \
@@ -181,11 +179,9 @@ if "parcels" in st.session_state:
         html = (f"<b>Lot/Plan:</b> {lp}<br>"
                 f"<b>Lot Type:</b> {ltype}<br>"
                 f"<b>Area:</b> {area:,.2f} ha")
-
         feature = {"type":"Feature",
                    "properties":{"name": lp},
                    "geometry": mapping(geom)}
-
         folium.GeoJson(feature, name=lp, style_function=sty,
                        tooltip=lp, popup=html).add_to(pg)
         bounds.append([[geom.bounds[1],geom.bounds[0]],
@@ -231,12 +227,18 @@ if "table" in st.session_state and not st.session_state["table"].empty:
         allow_unsafe_jscode=True,
         height=250)
 
-    # robust selection extraction → always a list
-    sel_rows = []
+    # robust selection extraction → always list-of-dicts
     if isinstance(grid, dict):
         sel_rows = grid.get("selected_rows", [])
     elif hasattr(grid, "selected_rows"):
         sel_rows = grid.selected_rows
+    else:
+        sel_rows = []
+
+    if isinstance(sel_rows, pd.DataFrame):
+        sel_rows = sel_rows.to_dict("records")
+    elif not isinstance(sel_rows, list):
+        sel_rows = list(sel_rows)
 
     st.session_state["_sel"] = [
         (r.get("Lot/Plan") or r.get("Lot_Plan"))
@@ -257,7 +259,8 @@ if "table" in st.session_state and not st.session_state["table"].empty:
                 for i, p in enumerate(polys, 1):
                     nm = f"{lp} ({i})" if len(polys)>1 else lp
                     desc = f"Lot/Plan: {lp}<br>Area: {abs(g_geod.geometry_area_perimeter(p)[0])/1e4:,.2f} ha"
-                    poly = fld.newpolygon(name=nm, description=desc, outerboundaryis=p.exterior.coords)
+                    poly = fld.newpolygon(name=nm, description=desc,
+                                          outerboundaryis=p.exterior.coords)
                     for ring in p.interiors: poly.innerboundaryis.append(ring.coords)
                     poly.style.polystyle.color = fk
                     poly.style.linestyle.color = lk
@@ -286,7 +289,8 @@ if "table" in st.session_state and not st.session_state["table"].empty:
         ids = [r.get("Lot/Plan") or r.get("Lot_Plan") for r in sel_rows] \
               or st.session_state.get("_sel", [])
         if ids:
-            geom_bb = gpd.GeoSeries([st.session_state["parcels"][i]["geom"] for i in ids]).total_bounds
+            geom_bb = gpd.GeoSeries(
+                [st.session_state["parcels"][i]["geom"] for i in ids]).total_bounds
             st.session_state["__zoom"] = [[geom_bb[1],geom_bb[0]],
                                           [geom_bb[3],geom_bb[2]]]
             st.experimental_rerun()
