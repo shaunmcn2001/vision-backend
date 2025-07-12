@@ -1,23 +1,33 @@
+# layers.yaml ─ static catalogue
+
 basemaps:
   - name: OpenStreetMap
-    type: tile
     url: https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png
-    attr: © OpenStreetMap
+    attr: © OpenStreetMap contrib.
 
+overlays:
   - name: Esri Imagery
     type: tile
     url: https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}
     attr: © Esri
 
-  - name: Esri Topo
-    type: tile
-    url: https://services.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}
-    attr: © Esri
-
-overlays:
-  - name: Flood Hazard
+databases:          # «map services you can toggle»
+  # QLD cadastre parcel polygons
+  - name: QLD Cadastre
     type: wms
-    url: https://qrospatial.information.qld.gov.au/services/opendata/qra/FloodHazards/MapServer/WMSServer
-    layers: 0
-    fmt: image/png
-    attr: © QRA
+    url: https://spatial-gis.information.qld.gov.au/arcgis/services/PlanningCadastre/LandParcelPropertyFramework/MapServer/WMSServer
+    layers: 4
+    attr: © QLD Gov
+
+  # NSW cadastre parcel polygons
+  - name: NSW Cadastre
+    type: wms
+    url: https://maps.six.nsw.gov.au/arcgis/services/public/NSW_Cadastre/MapServer/WMSServer
+    layers: 9
+    attr: © NSW Spatial Services
+
+  # example AGOL layer served as GeoJSON (replace with your own)
+  - name: Example AGOL layer
+    type: geojson
+    url: https://services8.arcgis.com/.../FeatureServer/0/query?where=1%3D1&outSR=4326&f=pgeojson
+    attr: © Your Org
