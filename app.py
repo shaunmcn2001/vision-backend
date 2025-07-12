@@ -211,9 +211,17 @@ if "table" in st.session_state and not st.session_state["table"].empty:
             st.experimental_rerun()
 
     # listen for menu clicks coming back from JS
-    js = st_folium.get_last_msg()
-    if js and js.get("type"):
-        handle(js["type"], grid["selected_rows"])
+if grid['selected_rows']:
+    selected_rows = grid['selected_rows']
+    colz1, colz2, colz3, colz4 = st.columns(4)
+    if colz1.button("🔍 Zoom", key="zoom"):
+        handle("zoom", selected_rows)
+    if colz2.button("💢 Pulse", key="pulse"):
+        handle("pulse", selected_rows)
+    if colz3.button("⛓ Buffer 200m", key="buffer"):
+        handle("buffer", selected_rows)
+    if colz4.button("🧹 Remove", key="remove"):
+        handle("remove", selected_rows)
 
 # ─── apply zoom / pulse / buffer requests on the map ––––––––––––––––––––
 if "__zoom_bounds" in st.session_state:
