@@ -3,11 +3,11 @@
 
 """
 Streamlit one-page app for parcel lookup & export.
-─────────────────────────────────────────────────
+──────────────────────────────────────────────────
 • Compact sidebar (IDs + Style expander)
 • Folium map with parcels layer
-• Interactive AgGrid table under the map
-    – Tick rows → Zoom / Export KML / Export SHP / Remove
+• Interactive AgGrid table with per-row ⋮ menu:
+    – Zoom / Export KML / Export SHP / Remove
 • Export-ALL bar (KML + Shapefile)
 """
 
@@ -65,7 +65,7 @@ NSW = ("https://maps.six.nsw.gov.au/arcgis/rest/services/public/"
        "NSW_Cadastre/MapServer/9/query")
 
 def fetch_parcels(ids):
-    """Return {lotplan: {geom, props}},  [missing]"""
+    """Return {lotplan: {geom,props}},  [missing]"""
     out, miss = {}, []
     for lp in ids:
         url, fld = (QLD, "lotplan") if re.match(r"^\d+[A-Z]{1,3}\d+$", lp, re.I) \
@@ -167,8 +167,8 @@ sel_ids = set(st.session_state.get("_sel", []))
 bounds=[]
 if "parcels" in st.session_state:
     s = st.session_state["style"]
-    def sty(f):  # red outline if selected
-        lp = f["properties"]["name"]
+    def sty(feat):
+        lp = feat.get("properties", {}).get("name", "")
         return {"fillColor": s["fill"],
                 "color": "red" if lp in sel_ids else s["line"],
                 "weight": s["w"],
@@ -181,7 +181,12 @@ if "parcels" in st.session_state:
         html = (f"<b>Lot/Plan:</b> {lp}<br>"
                 f"<b>Lot Type:</b> {ltype}<br>"
                 f"<b>Area:</b> {area:,.2f} ha")
-        folium.GeoJson(mapping(geom), name=lp, style_function=sty,
+
+        feature = {"type":"Feature",
+                   "properties":{"name": lp},
+                   "geometry": mapping(geom)}
+
+        folium.GeoJson(feature, name=lp, style_function=sty,
                        tooltip=lp, popup=html).add_to(pg)
         bounds.append([[geom.bounds[1],geom.bounds[0]],
                        [geom.bounds[3],geom.bounds[2]]])
@@ -200,7 +205,7 @@ if "table" in st.session_state and not st.session_state["table"].empty:
     st.subheader("Query Results")
 
     df = st.session_state["table"].copy()
-    df["⋮"] = "⋮"   # action column
+    df["⋮"] = "⋮"
 
     gdf = gpd.GeoDataFrame(
         df, geometry=[r["geom"] for r in st.session_state["parcels"].values()],
@@ -215,7 +220,6 @@ if "table" in st.session_state and not st.session_state["table"].empty:
         return ['copy','separator',
                 {name:'Zoom to result(s)',action:()=>window.postMessage({type:'zoom'})},
                 {name:'Export KML',action:()=>window.postMessage({type:'kml'})},
-                {name:'Export SHP',action:()=>window.postMessage({type:'shp'})},
                 'separator',
                 {name:'Remove result(s)',action:()=>window.postMessage({type:'remove'})}];
     }""")
@@ -245,8 +249,8 @@ if "table" in st.session_state and not st.session_state["table"].empty:
         if colA.button("Generate KML"):
             kml = simplekml.Kml()
             fld = kml.newfolder(name=st.session_state["style"]["folder"])
-            fk = kml_colour(st.session_state["style"]["fill"], st.session_state["style"]["op"])
-            lk = kml_colour(st.session_state["style"]["line"], 100)
+            fk = kml_colour(s["fill"], s["op"])
+            lk = kml_colour(s["line"], 100)
             for lp, rec in st.session_state["parcels"].items():
                 geom = rec["geom"]
                 polys = [geom] if isinstance(geom, Polygon) else list(geom.geoms)
@@ -257,9 +261,11 @@ if "table" in st.session_state and not st.session_state["table"].empty:
                     for ring in p.interiors: poly.innerboundaryis.append(ring.coords)
                     poly.style.polystyle.color = fk
                     poly.style.linestyle.color = lk
-                    poly.style.linestyle.width = float(st.session_state["style"]["w"])
-            st.download_button("Download KML", io.BytesIO(kml.kml().encode()),
-                               "parcels.kml", "application/vnd.google-earth.kml+xml")
+                    poly.style.linestyle.width = float(s["w"])
+            st.download_button("Download KML",
+                               io.BytesIO(kml.kml().encode()),
+                               "parcels.kml",
+                               "application/vnd.google-earth.kml+xml")
         if colB.button("Generate SHP"):
             tmp = tempfile.mkdtemp()
             gpd.GeoDataFrame(
@@ -270,26 +276,27 @@ if "table" in st.session_state and not st.session_state["table"].empty:
             with zipfile.ZipFile(z,"w",zipfile.ZIP_DEFLATED) as zf:
                 for f in pathlib.Path(tmp).glob("all.*"):
                     zf.write(f,f.name)
-            st.download_button("Download SHP", open(z,"rb"),
-                               "parcels.zip", "application/zip")
+            st.download_button("Download SHP",
+                               open(z,"rb"),
+                               "parcels.zip",
+                               "application/zip")
 
     # context-menu events
-    if js and js.get("type") in {"zoom","kml"}:
-        ids = [
-            (r.get("Lot/Plan") or r.get("Lot_Plan"))
-            for r in sel_rows
-        ] or st.session_state.get("_sel", [])
-        geoms = [st.session_state["parcels"][i]["geom"] for i in ids]
-
-        if js["type"]=="zoom":
-            bb = gpd.GeoSeries(geoms).total_bounds
-            st.session_state["__zoom"] = [[bb[1],bb[0]],[bb[3],bb[2]]]
+    if js and js.get("type") == "zoom":
+        ids = [r.get("Lot/Plan") or r.get("Lot_Plan") for r in sel_rows] \
+              or st.session_state.get("_sel", [])
+        if ids:
+            geom_bb = gpd.GeoSeries([st.session_state["parcels"][i]["geom"] for i in ids]).total_bounds
+            st.session_state["__zoom"] = [[geom_bb[1],geom_bb[0]],
+                                          [geom_bb[3],geom_bb[2]]]
             st.experimental_rerun()
-
-        elif js["type"]=="kml":
+    elif js and js.get("type") == "kml":
+        ids = [r.get("Lot/Plan") or r.get("Lot_Plan") for r in sel_rows] \
+              or st.session_state.get("_sel", [])
+        if ids:
             kml = simplekml.Kml()
-            fk = kml_colour(st.session_state["style"]["fill"], st.session_state["style"]["op"])
-            lk = kml_colour(st.session_state["style"]["line"], 100)
+            fk = kml_colour(s["fill"], s["op"])
+            lk = kml_colour(s["line"], 100)
             for lp in ids:
                 geom = st.session_state["parcels"][lp]["geom"]
                 poly = kml.newpolygon(name=lp,
@@ -298,7 +305,7 @@ if "table" in st.session_state and not st.session_state["table"].empty:
                                       else list(geom.geoms)[0].exterior.coords)
                 poly.style.polystyle.color = fk
                 poly.style.linestyle.color = lk
-                poly.style.linestyle.width = float(st.session_state["style"]["w"])
+                poly.style.linestyle.width = float(s["w"])
             st.download_button("Download Selected KML",
                                io.BytesIO(kml.kml().encode()),
                                "selected.kml",
