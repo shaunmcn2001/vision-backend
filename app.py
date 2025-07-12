@@ -45,7 +45,7 @@ def fetch_parcels(lps):
 def kml_colour(hexrgb, p):
     r, g, b = hexrgb[1:3], hexrgb[3:5], hexrgb[5:7]
     a = int(round(255 * p / 100))
-    return f\"{a:02x}{b}{g}{r}\"
+    return f"{a:02x}{b}{g}{r}"
 
 # ─── Sidebar ───
 with st.sidebar:
