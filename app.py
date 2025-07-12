@@ -10,11 +10,10 @@ Streamlit one-page app for parcel lookup & export.
     – Tick rows → Zoom / Export KML / Export SHP / Remove
 • Export-ALL bar (KML + Shapefile)
 """
-
 import io
 import os
 import re
-import pathlib
+import pathlib           # now this will import correctly
 import requests
 import tempfile
 import zipfile
