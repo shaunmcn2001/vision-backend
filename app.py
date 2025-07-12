@@ -1,4 +1,4 @@
-# app.py  –  LAWD Parcel Toolkit  (private Azure container)
+# app.py – LAWD Parcel Toolkit (private-container, server-side fetch)
 
 import io, re, json, yaml, pathlib, uuid, tempfile, zipfile, requests, streamlit as st
 from collections import defaultdict
@@ -13,7 +13,7 @@ from pyproj import Transformer, Geod
 # enable KML driver
 fiona.drvsupport.supported_drivers["KML"] = "rw"
 
-# ───────────────────────── Config from YAML ─────────────────────────
+# ─── static config from layers.yaml ────────────────────────────────
 REG_PATH = pathlib.Path("layers.yaml")
 def load_static():
     cfg = yaml.safe_load(REG_PATH.read_text())
@@ -24,7 +24,7 @@ def load_static():
 def save_static(cfg): REG_PATH.write_text(yaml.safe_dump(cfg, sort_keys=False))
 static_cfg = load_static()
 
-# ───────────────────────── Azure helpers ────────────────────────────
+# ─── Azure helpers (index.json manifest) ───────────────────────────
 def index_blob():
     acct = st.secrets["AZ_ACCOUNT"]; cont = st.secrets["AZ_CONTAINER"]
     sas  = st.secrets.get("AZ_SAS", "")
@@ -34,50 +34,51 @@ def index_blob():
 
 @st.cache_data
 def load_dynamic():
-    try:
-        return json.loads(index_blob().download_blob().readall().decode())
-    except Exception:
-        return []
+    try:  return json.loads(index_blob().download_blob().readall().decode())
+    except Exception: return []
 def save_dynamic(lst):
     index_blob().upload_blob(json.dumps(lst).encode(), overwrite=True,
                              content_type="application/json")
     st.cache_data.clear()
 dynamic_cfg = load_dynamic()
 
-# ─────────────────────── Overlay helper ─────────────────────────────
+# ─── overlay helper (glass + progress) ─────────────────────────────
 def show_overlay(msg: str, pct: int | None):
     ph = st.session_state.get("_ov")
     if pct is None:
-        if ph: ph.empty(); st.session_state["_ov"] = None
-        return
+        if ph: ph.empty(); st.session_state["_ov"] = None; return
     html=f"""<style>
     .ov{{position:fixed;inset:0;z-index:9999;backdrop-filter:blur(4px)brightness(.35);
-         display:flex;flex-direction:column;justify-content:center;align-items:center}}
+    display:flex;flex-direction:column;justify-content:center;align-items:center}}
     .bar{{width:60%;max-width:400px;height:10px;background:#555;border-radius:6px;
-         overflow:hidden;box-shadow:0 0 10px #000 inset}}
+    overflow:hidden;box-shadow:0 0 10px #000 inset}}
     .bar>div{{width:{pct}% ;height:100%;
-         background:linear-gradient(90deg,#ff6600 0%,#ffaa00 100%);
-         transition:width .25s}}
-    .txt{{color:#fff;font-weight:600;margin-top:18px}}
-    </style>
+    background:linear-gradient(90deg,#ff6600 0%,#ffaa00 100%);
+    transition:width .25s}}
+    .txt{{color:#fff;font-weight:600;margin-top:18px}}</style>
     <div class='ov'><div class='bar'><div></div></div><div class='txt'>{msg}</div></div>"""
     if not ph: ph=st.empty(); st.session_state["_ov"]=ph
     ph.markdown(html, unsafe_allow_html=True)
 
-# ─── Upload vector → Azure (attach blob-scope SAS) ──────────────────
+# ─── upload vector → Azure (fix sr=b) ──────────────────────────────
 def upload_vector_blob(uploaded_file):
     acct = st.secrets["AZ_ACCOUNT"]; cont = st.secrets["AZ_CONTAINER"]
     sas  = st.secrets.get("AZ_SAS", "")
     tmp  = tempfile.mkdtemp(); raw = pathlib.Path(tmp)/uploaded_file.name
     raw.write_bytes(uploaded_file.read())
 
-    # read/unzip/reproject
+    # read / unzip / geo-conversion
     if raw.suffix.lower()==".zip":
         with zipfile.ZipFile(raw) as z: z.extractall(tmp)
         shp = next(pathlib.Path(tmp).glob("*.shp"))
         gdf = gpd.read_file(shp)
     else:
         gdf = gpd.read_file(raw)
+
+    # ── CRS FIX — force CRS for shapefiles that arrive undefined ──
+    # if gdf.crs is None:
+    #     gdf.set_crs("epsg:7856", inplace=True)   # <-- change if needed
+
     if gdf.crs and gdf.crs.to_epsg()!=4326:
         gdf = gdf.to_crs(4326)
 
@@ -91,12 +92,11 @@ def upload_vector_blob(uploaded_file):
     bc.upload_blob(geo.read_bytes(), overwrite=True,
                    content_type="application/geo+json")
 
-    # convert sr=c → sr=b for blob GET
-    token = sas.replace("sr=c", "sr=b") if sas else ""
-    url = f"{bc.url}?{token}" if token else bc.url
+    token = sas.replace("sr=c","sr=b") if sas else ""
+    url   = f"{bc.url}?{token}" if token else bc.url
     return url, uid
 
-# ───────────────────── Streamlit page setup ─────────────────────────
+# ─── Streamlit UI setup ────────────────────────────────────────────
 st.set_page_config(page_title="Lot/Plan → KML", page_icon="📍",
                    layout="wide", initial_sidebar_state="collapsed")
 st.markdown("<div style='background:#ff6600;color:white;font-size:20px;"
@@ -107,27 +107,26 @@ st.markdown("<style>div[data-testid='stSidebar']{width:320px}"
             "</style>", unsafe_allow_html=True)
 
 with st.sidebar:
-    tab = option_menu(None, ["Query","Layers","Downloads"],
-                      icons=["search","layers","download"],
-                      default_index=0,
-                      styles={"container":{"padding":"0","background":"#262730"},
-                              "nav-link-selected":{"background":"#ff6600"}})
+    tab=option_menu(None,["Query","Layers","Downloads"],
+                    icons=["search","layers","download"],default_index=0,
+                    styles={"container":{"padding":"0","background":"#262730"},
+                            "nav-link-selected":{"background":"#ff6600"}})
 
-# default state
+# default session state
 if static_cfg["basemaps"]:
     st.session_state.setdefault("basemap", static_cfg["basemaps"][0]["name"])
 st.session_state.setdefault("overlay_state",
-    {ov["name"]: False for ov in static_cfg["overlays"]})
+    {ov["name"]:False for ov in static_cfg["overlays"]})
 st.session_state.setdefault("db_state",
-    {db["name"]: False for db in static_cfg["databases"]})
+    {db["name"]:False for db in static_cfg["databases"]})
 st.session_state.setdefault("dyn_state",
-    {d["id"]: False for d in dynamic_cfg})
+    {d["id"]:False for d in dynamic_cfg})
 
-# ───────────────────── Cadastre helpers ────────────────────────────
-QLD=("https://spatial-gis.information.qld.gov.au/arcgis/rest/services/"
-     "PlanningCadastre/LandParcelPropertyFramework/MapServer/4/query")
-NSW=("https://maps.six.nsw.gov.au/arcgis/rest/services/public/"
-     "NSW_Cadastre/MapServer/9/query")
+# ─── cadastre fetch utilities ──────────────────────────────────────
+QLD = ("https://spatial-gis.information.qld.gov.au/arcgis/rest/services/"
+       "PlanningCadastre/LandParcelPropertyFramework/MapServer/4/query")
+NSW = ("https://maps.six.nsw.gov.au/arcgis/rest/services/public/"
+       "NSW_Cadastre/MapServer/9/query")
 geod = Geod(ellps="WGS84")
 def fetch(ids):
     grp, miss = defaultdict(list), []
@@ -140,19 +139,19 @@ def fetch(ids):
             wkid=feats[0]["geometry"].get("spatialReference",{}).get("wkid",4326)
             tfm=Transformer.from_crs(wkid,4326,always_xy=True).transform if wkid!=4326 else None
             for ft in feats:
-                geom=shape(ft["geometry"]); grp[lp].append(transform(tfm,geom) if tfm else geom)
+                geom=shape(ft["geometry"])
+                grp[lp].append(transform(tfm,geom) if tfm else geom)
         except Exception:
             miss.append(lp)
-    return {lp:unary_union(gs) for lp,gs in grp.items()}, miss
-def kml_colour(h,p):
-    r,g,b=h[1:3],h[3:5],h[5:7]; a=int(round(255*p/100)); return f"{a:02x}{b}{g}{r}"
+    return {lp: unary_union(gs) for lp,gs in grp.items()}, miss
+def kml_colour(h,p): r,g,b=h[1:3],h[3:5],h[5:7]; a=int(round(255*p/100)); return f"{a:02x}{b}{g}{r}"
 
-# ───────────────────── TAB: Query ──────────────────────────────────
+# ───── TAB: Query ──────────────────────────────────────────────────
 if tab=="Query":
     ids_txt=st.sidebar.text_area("IDs",height=140,placeholder="6RP702264\n5//DP123456")
-    fx=st.sidebar.color_picker("Fill colour","#ff6600")
+    fx=st.sidebar.color_picker("Fill","#ff6600")
     fo=st.sidebar.number_input("Fill opacity %",0,100,70)
-    lx=st.sidebar.color_picker("Outline colour","#2e2e2e")
+    lx=st.sidebar.color_picker("Outline","#2e2e2e")
     lw=st.sidebar.number_input("Outline width px",.5,6.,1.2,.1)
     folder=st.sidebar.text_input("Folder name","Parcels")
 
@@ -164,7 +163,7 @@ if tab=="Query":
         st.session_state["style"]=dict(fill=fx,op=fo,line=lx,w=lw,folder=folder)
         st.sidebar.info(f"Loaded {len(geoms)} parcel{'s'*(len(geoms)!=1)}.")
 
-# ───────────────────── TAB: Layers ─────────────────────────────────
+# ───── TAB: Layers ─────────────────────────────────────────────────
 if tab=="Layers":
     # basemap
     if static_cfg["basemaps"]:
@@ -173,27 +172,28 @@ if tab=="Layers":
         st.session_state["basemap"]=st.sidebar.radio("",names,
             index=names.index(st.session_state["basemap"]))
 
-    # overlays
     st.sidebar.subheader("Static overlays")
     for ov in static_cfg["overlays"]:
         st.session_state["overlay_state"][ov["name"]]=st.sidebar.checkbox(
             ov["name"],value=st.session_state["overlay_state"][ov["name"]])
 
-    # databases
     st.sidebar.subheader("Databases")
     for db in static_cfg["databases"]:
         st.session_state["db_state"][db["name"]]=st.sidebar.checkbox(
             db["name"],value=st.session_state["db_state"][db["name"]])
 
+    # add server layer
     with st.sidebar.expander("➕ Add server layer"):
         n=st.text_input("Name"); u=st.text_input("URL …")
         t=st.selectbox("Type",["wms","tile"])
-        l=st.text_input("Layers (WMS only)"); a=st.text_input("Attribution","© Source")
+        l=st.text_input("Layers (WMS only)")
+        a=st.text_input("Attribution","© Source")
         if st.button("Add to database") and n and u:
-            static_cfg["databases"].append({"name":n,"type":t,"url":u,"layers":l,"attr":a})
+            static_cfg["databases"].append(
+                {"name":n,"type":t,"url":u,"layers":l,"attr":a})
             save_static(static_cfg); st.rerun()
 
-    # uploads
+    # uploads list
     st.sidebar.subheader("My uploads")
     loaded=[d for d in dynamic_cfg if st.session_state["dyn_state"].get(d["id"])]
     avail =[d for d in dynamic_cfg if not st.session_state["dyn_state"].get(d["id"])]
@@ -230,7 +230,7 @@ if tab=="Layers":
         except Exception as e:
             show_overlay(None,None); st.sidebar.error(f"Upload failed: {e}")
 
-# ───────────────────── Build Folium map ────────────────────────────
+# ───── Build Folium map ────────────────────────────────────────────
 m=folium.Map(location=[-25,145],zoom_start=5,control_scale=True,
              width="100%",height="100vh")
 if static_cfg["basemaps"]:
@@ -263,14 +263,24 @@ for db in static_cfg["databases"]:
         except Exception as e:
             st.warning(f"{db['name']} failed: {e}")
 
+# dynamic uploads – server-side fetch & debug output
 for d in dynamic_cfg:
     if st.session_state["dyn_state"].get(d["id"]):
         try:
-            gj=folium.GeoJson(d["url"],name=d["name"]).add_to(m)
-            bounds.append(gj.get_bounds())
+            gj_raw = requests.get(d["url"], timeout=10).text
+            gj_data = json.loads(gj_raw)
+            folium_geo = folium.GeoJson(gj_data, name=d["name"]).add_to(m)
+            bounds.append(folium_geo.get_bounds())
+
+            dbg = st.session_state.setdefault("_dbg", set())
+            if d["id"] not in dbg:
+                dbg.add(d["id"])
+                st.sidebar.markdown(f"##### Debug: {d['name']}")
+                st.sidebar.json(gj_data if isinstance(gj_data, dict) else {"note":"Non-dict JSON"})
         except Exception as e:
             st.warning(f"{d['name']} failed: {e}")
 
+# parcels
 parcel_bounds=[]
 pg=folium.FeatureGroup(name="Parcels",show=True).add_to(m)
 if "geoms" in st.session_state:
@@ -283,15 +293,15 @@ if "geoms" in st.session_state:
         parcel_bounds.append(g.bounds)
 
 if parcel_bounds:
-    minx=min(b[0] for b in parcel_bounds); miny=min(b[1] for b in parcel_bounds)
-    maxx=max(b[2] for b in parcel_bounds); maxy=max(b[3] for b in parcel_bounds)
-    m.fit_bounds([[miny,minx],[maxy,maxx]])
+    xs=[b[0] for b in parcel_bounds]; ys=[b[1] for b in parcel_bounds]
+    xe=[b[2] for b in parcel_bounds]; ye=[b[3] for b in parcel_bounds]
+    m.fit_bounds([[min(ys),min(xs)],[max(ye),max(xe)]])
 elif bounds:
     m.fit_bounds(bounds[0])
 
 st_folium(m,height=700,use_container_width=True,key="main_map")
 
-# ───────────────────── TAB: Downloads ──────────────────────────────
+# ───── TAB: Downloads ──────────────────────────────────────────────
 if tab=="Downloads":
     st.sidebar.subheader("Export")
     if "geoms" in st.session_state and st.session_state["geoms"]:
@@ -307,7 +317,7 @@ if tab=="Downloads":
                     desc=f"Lot/Plan: {lp}<br>Area: {area:,.2f} ha"
                     pl=folder.newpolygon(name=nm,description=desc,
                                          outerboundaryis=p.exterior.coords)
-                    for ring in p.interiors: pl.innerboundaryis.append(ring.coords)
+                    for r in p.interiors: pl.innerboundaryis.append(r.coords)
                     pl.style.polystyle.color=fk; pl.style.linestyle.color=lk; pl.style.linestyle.width=float(s['w'])
             st.sidebar.download_button("Save KML",
                 io.BytesIO(kml.kml().encode()).getvalue(),"parcels.kml",
