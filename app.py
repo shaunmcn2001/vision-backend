@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
-# LAWD Parcel Toolkit  · 2025-07  (stable full build)
+# LAWD Parcel Toolkit  · 2025‑07  (stable full build)
 
 """
-Streamlit one-page app for parcel lookup & export.
+Streamlit one‑page app for parcel lookup & export.
 ────────────────────────────────────────────────────────
 • Compact sidebar (IDs + Style expander)
 • Folium map with parcels layer
 • Results table (AgGrid) below map
     – Tick rows → Zoom / Export / Remove via buttons
-• Export-ALL bar (KML + Shapefile)
+• Export‑ALL bar (KML + Shapefile)
 
-Dependencies:  streamlit, streamlit-option-menu, streamlit-folium (≥0.18),
-               st-aggrid, folium, simplekml, geopandas, shapely, pyproj, pandas.
+Dependencies:  streamlit, streamlit‑option‑menu, streamlit‑folium (≥0.18),
+               st‑aggrid, folium, simplekml, geopandas, shapely, pyproj, pandas.
 """
 
 import io, re, yaml, pathlib, requests, tempfile, zipfile, uuid, shutil
