@@ -5,13 +5,11 @@ import streamlit as st
 import folium
 from folium.plugins import MousePosition
 from streamlit_folium import st_folium
-from streamlit_option_menu import option_menu
 import pandas as pd
 import requests, io, tempfile, zipfile, os
 import simplekml
 import geopandas as gpd
 from shapely.geometry import shape
-from pyproj import Geod
 
 # ─── Page Config & CSS ───────────────────────────────────
 st.set_page_config(
@@ -32,29 +30,23 @@ div.block-container {padding:0 1rem !important;}
 """, unsafe_allow_html=True)
 
 # ─── Session State Defaults ──────────────────────────────
-if "features_qld" not in st.session_state:
-    st.session_state.features_qld = []
-if "features_nsw" not in st.session_state:
-    st.session_state.features_nsw = []
-if "results_df" not in st.session_state:
-    st.session_state.results_df = pd.DataFrame(
-        columns=["Parcel ID", "State", "Locality", "Area (m²)"]
-    )
-if "style_fill" not in st.session_state:
-    st.session_state.style_fill = "#009FDF"
-if "style_opacity" not in st.session_state:
-    st.session_state.style_opacity = 40
-if "style_weight" not in st.session_state:
-    st.session_state.style_weight = 3
-if "panel_expanded" not in st.session_state:
-    st.session_state.panel_expanded = True
+ss = st.session_state
+ss.setdefault("features_qld", [])
+ss.setdefault("features_nsw", [])
+ss.setdefault("results_df", pd.DataFrame(
+    columns=["Parcel ID", "State", "Locality", "Area (m²)"]
+))
+ss.setdefault("style_fill", "#009FDF")
+ss.setdefault("style_opacity", 40)
+ss.setdefault("style_weight", 3)
+ss.setdefault("panel_expanded", True)
 
 # ─── Panel Toggle ────────────────────────────────────────
-if st.button("Hide Panel" if st.session_state.panel_expanded else "Show Panel"):
-    st.session_state.panel_expanded = not st.session_state.panel_expanded
+if st.button("Hide Panel" if ss.panel_expanded else "Show Panel"):
+    ss.panel_expanded = not ss.panel_expanded
 
 # ─── Layout Columns ──────────────────────────────────────
-if st.session_state.panel_expanded:
+if ss.panel_expanded:
     map_col, panel_col = st.columns([3, 1])
 else:
     map_col = st.container()
@@ -113,7 +105,7 @@ if panel_col:
                 }
                 try:
                     resp = requests.get(qld_url, params=params, timeout=12).json()
-                    st.session_state.features_qld = resp.get("features", [])
+                    ss.features_qld = resp.get("features", [])
                 except:
                     st.error("QLD query failed.")
 
@@ -132,13 +124,13 @@ if panel_col:
                 }
                 try:
                     resp = requests.get(nsw_url, params=params, timeout=12).json()
-                    st.session_state.features_nsw = resp.get("features", [])
+                    ss.features_nsw = resp.get("features", [])
                 except:
                     st.error("NSW query failed.")
 
             # Build results DataFrame
             recs = []
-            for feat in st.session_state.features_qld:
+            for feat in ss.features_qld:
                 p = feat["properties"]
                 recs.append({
                     "Parcel ID": p.get("lotplan", ""),
@@ -146,7 +138,7 @@ if panel_col:
                     "Locality":   p.get("locality", ""),
                     "Area (m²)":  p.get("lot_area", None)
                 })
-            for feat in st.session_state.features_nsw:
+            for feat in ss.features_nsw:
                 p = feat["properties"]
                 recs.append({
                     "Parcel ID": p.get("lotidstring", ""),
@@ -154,19 +146,19 @@ if panel_col:
                     "Locality":   "",
                     "Area (m²)":  p.get("planlotarea", None)
                 })
-            st.session_state.results_df = pd.DataFrame(recs)
+            ss.results_df = pd.DataFrame(recs)
 
         # Style & Results
-        df = st.session_state.results_df
+        df = ss.results_df
         if not df.empty:
             st.markdown("**Style Settings**")
             c1, c2, c3 = st.columns(3)
-            fill = c1.color_picker("Fill Color", st.session_state.style_fill)
-            op   = c2.slider("Opacity (%)", 0, 100, st.session_state.style_opacity)
-            wt   = c3.slider("Outline (px)", 1, 10, st.session_state.style_weight)
-            st.session_state.style_fill    = fill
-            st.session_state.style_opacity = op
-            st.session_state.style_weight  = wt
+            fill = c1.color_picker("Fill Color", ss.style_fill)
+            op   = c2.slider("Opacity (%)", 0, 100, ss.style_opacity)
+            wt   = c3.slider("Outline (px)", 1, 10, ss.style_weight)
+            ss.style_fill    = fill
+            ss.style_opacity = op
+            ss.style_weight  = wt
 
             st.markdown("**Search Results**")
             from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode
@@ -178,7 +170,7 @@ if panel_col:
                 df,
                 gridOptions=gb.build(),
                 update_mode=GridUpdateMode.MODEL_CHANGED,
-                theme="fresh"  # valid theme
+                theme="light"  # switched to valid 'light' theme
             )
             selected = grid["selected_rows"]
 
@@ -188,7 +180,7 @@ if panel_col:
                 lats, lons = [], []
                 for r in selected:
                     pid = r["Parcel ID"]
-                    for feat in st.session_state.features_qld + st.session_state.features_nsw:
+                    for feat in ss.features_qld + ss.features_nsw:
                         props = feat["properties"]
                         key = props.get("lotplan", props.get("lotidstring"))
                         if key == pid:
@@ -213,14 +205,14 @@ if panel_col:
                 kcol = ah + hc[4:6] + hc[2:4] + hc[0:2]
                 for r in selected:
                     pid = r["Parcel ID"]
-                    for feat in st.session_state.features_qld + st.session_state.features_nsw:
+                    for feat in ss.features_qld + ss.features_nsw:
                         props = feat["properties"]
                         key = props.get("lotplan", props.get("lotidstring"))
                         if key == pid:
                             poly = kml.newpolygon(name=pid)
-                            glyph = feat["geometry"]
-                            if glyph["type"] == "Polygon":
-                                poly.outerboundaryis = glyph["coordinates"][0]
+                            geom = feat["geometry"]
+                            if geom["type"] == "Polygon":
+                                poly.outerboundaryis = geom["coordinates"][0]
                             poly.style.polystyle.color = kcol
                             poly.style.linestyle.color = kcol
                             poly.style.linestyle.width = wt
@@ -237,7 +229,7 @@ if panel_col:
                 rows, geoms = [], []
                 for r in selected:
                     pid, stt = r["Parcel ID"], r["State"]
-                    for feat in st.session_state.features_qld + st.session_state.features_nsw:
+                    for feat in ss.features_qld + ss.features_nsw:
                         props = feat["properties"]
                         key = props.get("lotplan", props.get("lotidstring"))
                         if key == pid:
@@ -253,12 +245,12 @@ if panel_col:
                 ah = f"{int(op/100*255):02x}"
                 hc = fill.lstrip("#")
                 kcol = ah + hc[4:6] + hc[2:4] + hc[0:2]
-                for feat in st.session_state.features_qld + st.session_state.features_nsw:
+                for feat in ss.features_qld + ss.features_nsw:
                     pid = feat["properties"].get("lotplan", feat["properties"].get("lotidstring",""))
                     poly = kml.newpolygon(name=pid)
-                    glyph = feat["geometry"]
-                    if glyph["type"] == "Polygon":
-                        poly.outerboundaryis = glyph["coordinates"][0]
+                    geom = feat["geometry"]
+                    if geom["type"] == "Polygon":
+                        poly.outerboundaryis = geom["coordinates"][0]
                     poly.style.polystyle.color = kcol
                     poly.style.linestyle.color = kcol
                     poly.style.linestyle.width = wt
@@ -273,10 +265,10 @@ if panel_col:
             # Export All SHP
             if b5.button("Export All SHP"):
                 rows, geoms = [], []
-                for feat in st.session_state.features_qld + st.session_state.features_nsw:
+                for feat in ss.features_qld + ss.features_nsw:
                     props = feat["properties"]
                     pid = props.get("lotplan", props.get("lotidstring",""))
-                    stt = "QLD" if feat in st.session_state.features_qld else "NSW"
+                    stt = "QLD" if feat in ss.features_qld else "NSW"
                     rows.append({"Parcel ID": pid, "State": stt})
                     geoms.append(shape(feat["geometry"]))
                 gdf = gpd.GeoDataFrame(rows, geometry=geoms, crs="EPSG:4326")
@@ -302,13 +294,14 @@ with map_col:
     ).add_to(m)
     MousePosition().add_to(m)
     folium.LayerControl(collapsed=False).add_to(m)
+
     style_fn = lambda feat: {
-        "fillColor":   st.session_state.style_fill,
-        "color":       st.session_state.style_fill,
-        "fillOpacity": st.session_state.style_opacity / 100,
-        "weight":      st.session_state.style_weight
+        "fillColor":   ss.style_fill,
+        "color":       ss.style_fill,
+        "fillOpacity": ss.style_opacity / 100,
+        "weight":      ss.style_weight
     }
-    for feat in st.session_state.features_qld + st.session_state.features_nsw:
+    for feat in ss.features_qld + ss.features_nsw:
         folium.GeoJson(feat, style_function=style_fn).add_to(m)
 
     st_folium(m, width="100%", height=700)
