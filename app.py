@@ -1,337 +1,384 @@
-#!/usr/bin/env python3
 import streamlit as st
-import folium
-from folium.plugins import MousePosition
-from streamlit_folium import st_folium
-import pandas as pd
-import requests, io, tempfile, zipfile, os
-import simplekml
-import geopandas as gpd
-from shapely.geometry import shape
-
-# Page configuration and custom CSS
-st.set_page_config(
-    page_title="Parcel Toolkit",
-    page_icon="📍",
-    layout="wide",
-    initial_sidebar_state="collapsed"
-)
+st.set_page_config(page_title="Parcel Viewer", layout="wide")
+# Hide default Streamlit elements and reduce padding
 st.markdown("""
-<style>
-#MainMenu, footer, header { visibility: hidden !important; }
-div.block-container { padding: 0 1rem !important; }
-.leaflet-control-layers-list {
-  background: rgba(40,40,40,0.8) !important;
-  color: #fafafa !important;
-}
-</style>
-""", unsafe_allow_html=True)
+    <style>
+    #MainMenu, header, footer {visibility: hidden;}
+    [data-testid="stAppViewContainer"] .main .block-container {padding: 0;}
+    </style>
+    """, unsafe_allow_html=True)
 
-# Session state defaults
-ss = st.session_state
-ss.setdefault("features_qld", [])
-ss.setdefault("features_nsw", [])
-ss.setdefault("results_df", pd.DataFrame(columns=["Parcel ID", "State", "Locality", "Area (m²)"]))
-ss.setdefault("style_fill", "#009FDF")
-ss.setdefault("style_opacity", 40)    # opacity percentage
-ss.setdefault("style_weight", 3)      # outline weight in px
-ss.setdefault("zoom_bounds", None)    # for map zooming to selection
+# Ensure required libraries are installed and import them
+try:
+    import requests
+except ImportError:
+    import subprocess
+    subprocess.run(["pip", "install", "requests"])
+    import requests
+try:
+    import folium
+except ImportError:
+    import subprocess
+    subprocess.run(["pip", "install", "folium"])
+    import folium
+try:
+    import pandas as pd
+except ImportError:
+    import subprocess
+    subprocess.run(["pip", "install", "pandas"])
+    import pandas as pd
+try:
+    import shapefile
+except ImportError:
+    import subprocess
+    subprocess.run(["pip", "install", "pyshp"])
+    import shapefile
+try:
+    from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode
+except ImportError:
+    import subprocess
+    subprocess.run(["pip", "install", "streamlit-aggrid"])
+    from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode
 
-# Create tabs for layout
-tab_search, tab_map = st.tabs(["Parcel Search", "Map View"])
+# Helper function to convert hex color and opacity to KML color format (AABBGGRR)
+def _hex_to_kml_color(hex_color: str, opacity: float) -> str:
+    hex_color = hex_color.lstrip('#')
+    if len(hex_color) != 6:
+        hex_color = "FFFFFF"  # default to white if invalid
+    r = hex_color[0:2]
+    g = hex_color[2:4]
+    b = hex_color[4:6]
+    alpha = int(opacity * 255)
+    return f"{alpha:02x}{b}{g}{r}"
 
-# --- Parcel Search & Results Tab ---
-with tab_search:
-    st.subheader("Lot/Plan Search")
-    lot_input = st.text_area(
-        "Enter IDs (one per line)",
-        height=140,
-        placeholder="e.g.\n6RP702264\n5//15006\n5/1/1000"
-    )
-    if st.button("🔍 Search Parcels", use_container_width=True):
-        # Reset previous search results
-        ss.features_qld = []
-        ss.features_nsw = []
-        ss.results_df = pd.DataFrame(columns=["Parcel ID", "State", "Locality", "Area (m²)"])
-        ss.zoom_bounds = None  # clear any previous zoom setting
+# Helper function to generate KML content from features
+def generate_kml(features: list, region: str, fill_hex: str, fill_opacity: float, outline_hex: str, outline_weight: int) -> str:
+    fill_kml_color = _hex_to_kml_color(fill_hex, fill_opacity)
+    outline_kml_color = _hex_to_kml_color(outline_hex, 1.0)
+    # Begin KML document
+    kml_lines = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<kml xmlns="http://www.opengis.net/kml/2.2">',
+        '<Document>'
+    ]
+    for feat in features:
+        props = feat.get("properties", {})
+        # Determine name for placemark
+        if region == "QLD":
+            lot = props.get("lot", "")
+            plan = props.get("plan", "")
+            placename = f"Lot {lot} Plan {plan}"
+        else:  # NSW
+            lot = props.get("lotnumber", "")
+            sec = props.get("sectionnumber", "") or ""
+            planlabel = props.get("planlabel", "")
+            placename = f"Lot {lot} {('Sec '+sec+' ' if sec else '')}{planlabel}"
+        kml_lines.append(f"<Placemark><name>{placename}</name>")
+        # KML style
+        kml_lines.append("<Style>")
+        kml_lines.append(f"<LineStyle><color>{outline_kml_color}</color><width>{outline_weight}</width></LineStyle>")
+        kml_lines.append(f"<PolyStyle><color>{fill_kml_color}</color></PolyStyle>")
+        kml_lines.append("</Style>")
+        # Geometry
+        geom = feat.get("geometry", {})
+        gtype = geom.get("type")
+        coords = geom.get("coordinates")
+        # Normalize to list of polygons (each polygon may have inner rings)
+        polygons = []
+        if gtype == "Polygon":
+            polygons.append(coords)
+        elif gtype == "MultiPolygon":
+            polygons.extend(coords)
+        else:
+            continue  # skip if not polygon type
+        if len(polygons) > 1:
+            kml_lines.append("<MultiGeometry>")
+        for poly in polygons:
+            if not poly: 
+                continue
+            outer = poly[0]
+            # ensure closed ring
+            if outer[0] != outer[-1]:
+                outer = outer + [outer[0]]
+            kml_lines.append("<Polygon><outerBoundaryIs><LinearRing><coordinates>")
+            kml_lines.append(" ".join(f"{x},{y},0" for x, y in outer))
+            kml_lines.append("</coordinates></LinearRing></outerBoundaryIs>")
+            # inner holes
+            for hole in poly[1:]:
+                if hole and hole[0] != hole[-1]:
+                    hole = hole + [hole[0]]
+                kml_lines.append("<innerBoundaryIs><LinearRing><coordinates>")
+                kml_lines.append(" ".join(f"{x},{y},0" for x, y in hole))
+                kml_lines.append("</coordinates></LinearRing></innerBoundaryIs>")
+            kml_lines.append("</Polygon>")
+        if len(polygons) > 1:
+            kml_lines.append("</MultiGeometry>")
+        kml_lines.append("</Placemark>")
+    kml_lines.append("</Document></kml>")
+    return "\n".join(kml_lines)
 
-        # Parse input lines into QLD and NSW IDs
-        ids = [line.strip() for line in lot_input.splitlines() if line.strip()]
-        qld_ids, nsw_ids = [], []
-        for idv in ids:
-            parts = idv.split("/")
-            if len(parts) == 3:
-                # Format: lot/section/plan (NSW input with section) -> use lot//plan (section omitted)
-                lot_num = parts[0]
-                plan_num = parts[2].upper()
-                nsw_ids.append(f"{lot_num}//{plan_num}")
-            elif len(parts) == 2:
-                # Format: lot/plan
-                lot_num = parts[0]
-                plan_id = parts[1].upper()
-                if plan_id.startswith(("DP", "SP", "PP")):
-                    # If plan has NSW prefix, format as lot//PLAN
-                    nsw_ids.append(f"{lot_num}//{plan_id}")
+# Helper function to generate a zipped Shapefile (bytes) from features
+def generate_shapefile(features: list, region: str) -> bytes:
+    # Create a temporary shapefile using pyshp
+    # Use an in-memory BytesIO by writing files to a temp directory and zipping them
+    import os, io, zipfile
+    temp_dir = "temp_shp_export"
+    os.makedirs(temp_dir, exist_ok=True)
+    base_path = os.path.join(temp_dir, "parcels")
+    w = shapefile.Writer(base_path)
+    w.field("LOT", "C", size=10)
+    w.field("SEC", "C", size=10)
+    w.field("PLAN", "C", size=15)
+    w.autoBalance = 1
+    for feat in features:
+        props = feat.get("properties", {})
+        if region == "QLD":
+            lot_val = props.get("lot", "") or ""
+            sec_val = ""  # QLD has no section
+            plan_val = props.get("plan", "") or ""
+        else:  # NSW
+            lot_val = props.get("lotnumber", "") or ""
+            sec_val = props.get("sectionnumber", "") or ""
+            plan_val = props.get("planlabel", "") or ""
+        w.record(lot_val, sec_val, plan_val)
+        geom = feat.get("geometry", {})
+        gtype = geom.get("type")
+        coords = geom.get("coordinates")
+        parts = []
+        if gtype == "Polygon":
+            # coords is [outer, hole1, hole2,...]
+            for ring in coords:
+                if ring and ring[0] != ring[-1]:
+                    ring = ring + [ring[0]]
+                parts.append(ring)
+        elif gtype == "MultiPolygon":
+            # coords is list of Polygons
+            for poly in coords:
+                for ring in poly:
+                    if ring and ring[0] != ring[-1]:
+                        ring = ring + [ring[0]]
+                    parts.append(ring)
+        if parts:
+            w.poly(parts)
+    w.close()
+    # Write .prj file for WGS84
+    prj_text = ('GEOGCS["WGS 84",DATUM["WGS_1984",'
+                'SPHEROID["WGS 84",6378137,298.257223563],'
+                'AUTHORITY["EPSG","6326"]],PRIMEM["Greenwich",0],'
+                'UNIT["degree",0.0174532925199433],AUTHORITY["EPSG","4326"]]')
+    with open(base_path + ".prj", "w") as prj:
+        prj.write(prj_text)
+    # Zip the files
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w") as z:
+        for ext in (".shp", ".shx", ".dbf", ".prj"):
+            file_path = base_path + ext
+            if os.path.exists(file_path):
+                z.write(file_path, arcname="parcels" + ext)
+    # Cleanup temp files
+    for ext in (".shp", ".shx", ".dbf", ".prj"):
+        file_path = base_path + ext
+        if os.path.exists(file_path):
+            os.remove(file_path)
+    os.rmdir(temp_dir)
+    return zip_buffer.getvalue()
+
+# Helper to compute bounding box (lat/lon) for a list of features
+def get_bounds(features: list):
+    min_lat, max_lat = 90.0, -90.0
+    min_lon, max_lon = 180.0, -180.0
+    for feat in features:
+        geom = feat.get("geometry", {})
+        coords = geom.get("coordinates")
+        gtype = geom.get("type")
+        if not coords:
+            continue
+        if gtype == "Polygon":
+            poly_list = [coords]
+        elif gtype == "MultiPolygon":
+            poly_list = coords
+        else:
+            continue
+        for poly in poly_list:
+            for ring in poly:
+                for x, y in ring:
+                    if y < min_lat: min_lat = y
+                    if y > max_lat: max_lat = y
+                    if x < min_lon: min_lon = x
+                    if x > max_lon: max_lon = x
+    # If no valid coords found, return default bounds
+    if min_lat > max_lat or min_lon > max_lon:
+        return [[-39, 137], [-9, 155]]
+    return [[min_lat, min_lon], [max_lat, max_lon]]
+
+# Set up layout columns: map (left) and sidebar controls (right)
+col1, col2 = st.columns([3, 1], gap="small")
+
+with col2:
+    # Parcel search input form
+    with st.form("search_form"):
+        query_str = st.text_input("Parcel search", "", 
+            help="Enter Lot/Plan (QLD) or Lot/Section/Plan (NSW). E.g., 6RP702264 or 5/1/1000 or 5//1000")
+        submit = st.form_submit_button("Search")
+    if submit:
+        user_input = query_str.strip()
+        if user_input == "":
+            st.warning("Please enter a parcel identifier.")
+        else:
+            # Determine region by input format
+            if "/" in user_input:
+                region = "NSW"
+                parts = user_input.split("/")
+                if len(parts) == 3:
+                    lot_str, sec_str, plan_str = parts[0].strip(), parts[1].strip(), parts[2].strip()
+                elif len(parts) == 2:
+                    lot_str, sec_str, plan_str = parts[0].strip(), "", parts[1].strip()
                 else:
-                    # Otherwise, assume QLD format (lot + plan without slash)
-                    qld_ids.append(lot_num.upper() + plan_id)
+                    lot_str, sec_str, plan_str = "", "", ""
+                # Extract numeric part of plan (remove any prefix like DP)
+                plan_num = "".join(filter(str.isdigit, plan_str))
+                if lot_str == "" or plan_num == "":
+                    st.error("Invalid NSW format. Use Lot/Section/Plan (Section can be blank).")
+                    st.session_state['features'] = []
+                else:
+                    where_clauses = [f"lotnumber='{lot_str}'"]
+                    if sec_str:
+                        where_clauses.append(f"sectionnumber='{sec_str}'")
+                    else:
+                        where_clauses.append("(sectionnumber IS NULL OR sectionnumber = '')")
+                    where_clauses.append(f"plannumber={plan_num}")
+                    where = " AND ".join(where_clauses)
+                    url = "https://maps.six.nsw.gov.au/arcgis/rest/services/public/NSW_Cadastre/MapServer/9/query"
+                    params = {"where": where, "outFields": "lotnumber,sectionnumber,planlabel", "outSR": "4326", "f": "geoJSON"}
+                    try:
+                        res = requests.get(url, params=params, timeout=10)
+                        data = res.json()
+                    except Exception as e:
+                        data = {}
+                    feats = data.get("features", []) or []
+                    if not feats:
+                        st.warning("No parcels found for the given identifier.")
+                    st.session_state['features'] = feats
+                    st.session_state['region'] = region
             else:
-                # Single token (e.g., 6RP702264) – treat as QLD lot-plan
-                qld_ids.append(idv.upper())
-        # Remove duplicates
-        qld_ids = list(dict.fromkeys(qld_ids))
-        nsw_ids = list(dict.fromkeys(nsw_ids))
+                region = "QLD"
+                inp = user_input.replace(" ", "").upper()
+                import re
+                match = re.match(r"^(\d+)([A-Z].+)$", inp)
+                if not match:
+                    st.error("Invalid QLD format. Use LotNumber followed by Plan (e.g. 6RP702264).")
+                    st.session_state['features'] = []
+                else:
+                    lot_str = match.group(1)
+                    plan_str = match.group(2)
+                    url = "https://spatial-gis.information.qld.gov.au/arcgis/rest/services/PlanningCadastre/LandParcelPropertyFramework/MapServer/4/query"
+                    params = {"where": f"lot='{lot_str}' AND plan='{plan_str}'", "outFields": "lot,plan,lotplan,locality", "outSR": "4326", "f": "geoJSON"}
+                    try:
+                        res = requests.get(url, params=params, timeout=10)
+                        data = res.json()
+                    except Exception as e:
+                        data = {}
+                    feats = data.get("features", []) or []
+                    if not feats:
+                        st.warning("No parcels found for the given identifier.")
+                    st.session_state['features'] = feats
+                    st.session_state['region'] = region
+    # If we have parcel features, show style controls, results table, and export options
+    if st.session_state.get('features'):
+        features = st.session_state['features']
+        region = st.session_state.get('region', 'QLD')
+        if features:  # only proceed if list is non-empty
+            # Styling controls
+            fill_color = st.color_picker("Fill color", "#FF0000", key="fill_color")
+            outline_color = st.color_picker("Outline color", "#000000", key="outline_color")
+            fill_opacity = st.slider("Fill opacity", 0.0, 1.0, 0.5, step=0.01, key="fill_opacity")
+            outline_weight = st.slider("Outline weight", 1, 10, 2, key="outline_weight")
+            # Results table with selectable rows
+            # Prepare data for table display
+            if region == "QLD":
+                data = [{"Lot": f["properties"].get("lot"), 
+                         "Plan": f["properties"].get("plan"), 
+                         "Locality": f["properties"].get("locality")} for f in features]
+                column_defs = ["Lot", "Plan", "Locality"]
+            else:  # NSW
+                data = []
+                for f in features:
+                    props = f["properties"]
+                    lot = props.get("lotnumber"); sec = props.get("sectionnumber") or ""
+                    planlabel = props.get("planlabel")
+                    data.append({"Lot": lot, "Section": sec, "Plan": planlabel})
+                column_defs = ["Lot", "Section", "Plan"]
+            df = pd.DataFrame(data, columns=column_defs)
+            gb = GridOptionsBuilder.from_dataframe(df)
+            gb.configure_selection(selection_mode="multiple", use_checkbox=True)
+            gb.configure_grid_options(domLayout='normal')  # fixed height scrollable table
+            gridOptions = gb.build()
+            grid_resp = AgGrid(df, gridOptions=gridOptions, height=250, update_mode=GridUpdateMode.SELECTION_CHANGED, theme="streamlit")
+            sel_rows = grid_resp.get("selected_rows", [])
+            for r in sel_rows:  # remove index if present
+                r.pop("index", None)
+            st.session_state['selected_rows'] = sel_rows
+            # Zoom to selected button and export options
+            zoom_clicked = st.button("Zoom to Selected")
+            export_selected_only = st.checkbox("Export only selected parcels", value=False)
+            # Determine selected features list based on selected rows
+            selected_features = []
+            if sel_rows:
+                if region == "QLD":
+                    for row in sel_rows:
+                        for feat in features:
+                            if feat["properties"].get("lot") == row["Lot"] and feat["properties"].get("plan") == row["Plan"]:
+                                selected_features.append(feat); break
+                else:  # NSW
+                    for row in sel_rows:
+                        for feat in features:
+                            props = feat["properties"]
+                            if props.get("lotnumber") == row["Lot"] and (props.get("sectionnumber") or "") == row["Section"] and props.get("planlabel") == row["Plan"]:
+                                selected_features.append(feat); break
+            # If no selection, use all for "selected" export
+            if not selected_features:
+                selected_features = features
+            st.session_state['selected_features'] = selected_features
+            # Prepare export files
+            kml_all = generate_kml(features, region, fill_color, fill_opacity, outline_color, outline_weight)
+            shp_all = generate_shapefile(features, region)
+            kml_sel = generate_kml(selected_features, region, fill_color, fill_opacity, outline_color, outline_weight)
+            shp_sel = generate_shapefile(selected_features, region)
+            # Download buttons
+            st.download_button("Download KML", data=(kml_sel if export_selected_only else kml_all), file_name="parcels.kml")
+            st.download_button("Download SHP", data=(shp_sel if export_selected_only else shp_all), file_name="parcels.zip")
 
-        # Query QLD parcels (if any QLD IDs)
-        if qld_ids:
-            qld_url = ("https://spatial-gis.information.qld.gov.au/arcgis/rest/services/"
-                       "PlanningCadastre/LandParcelPropertyFramework/MapServer/4/query")
-            where_clause = " OR ".join([f"lotplan='{i}'" for i in qld_ids])
-            params = {
-                "where": where_clause,
-                "outFields": "lotplan,locality,lot_area",
-                "f": "geojson",
-                "outSR": "4326"
-            }
-            try:
-                resp = requests.get(qld_url, params=params, timeout=12)
-                data = resp.json()
-                ss.features_qld = data.get("features", [])
-            except Exception as e:
-                st.error("QLD query failed.")
-
-        # Query NSW parcels (if any NSW IDs)
-        if nsw_ids:
-            nsw_url = ("https://maps.six.nsw.gov.au/arcgis/rest/services/public/NSW_Cadastre/MapServer/9/query")
-            where_clause = " OR ".join([f"lotidstring='{i}'" for i in nsw_ids])
-            params = {
-                "where": where_clause,
-                "outFields": "lotidstring,planlotarea",
-                "f": "geojson",
-                "outSR": "4326"
-            }
-            try:
-                resp = requests.get(nsw_url, params=params, timeout=12)
-                data = resp.json()
-                ss.features_nsw = data.get("features", [])
-            except Exception as e:
-                st.error("NSW query failed.")
-
-        # Build results DataFrame
-        records = []
-        for feat in ss.features_qld:
-            props = feat["properties"]
-            records.append({
-                "Parcel ID": props.get("lotplan", ""),
-                "State": "QLD",
-                "Locality": props.get("locality", ""),
-                "Area (m²)": props.get("lot_area", None)
-            })
-        for feat in ss.features_nsw:
-            props = feat["properties"]
-            records.append({
-                "Parcel ID": props.get("lotidstring", ""),
-                "State": "NSW",
-                "Locality": "",  # NSW data doesn't provide locality in this query
-                "Area (m²)": props.get("planlotarea", None)
-            })
-        ss.results_df = pd.DataFrame(records)
-
-    # Display style settings and results if any parcels were found
-    df = ss.results_df
-    if not df.empty:
-        st.markdown("**Style Settings**")
-        col1, col2, col3 = st.columns(3)
-        ss.style_fill = col1.color_picker("Fill Color", ss.style_fill)
-        ss.style_opacity = col2.slider("Opacity (%)", 0, 100, ss.style_opacity)
-        ss.style_weight = col3.slider("Outline (px)", 1, 10, ss.style_weight)
-
-        st.markdown("**Search Results**")
-        # Set up AgGrid with pagination, filtering, and multi-select
-        from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode
-        gb = GridOptionsBuilder.from_dataframe(df)
-        gb.configure_pagination(enabled=True)
-        gb.configure_selection(selection_mode="multiple", use_checkbox=True)
-        gb.configure_default_column(filter=True, sortable=True)
-        grid_response = AgGrid(
-            df,
-            gridOptions=gb.build(),
-            update_mode=GridUpdateMode.MODEL_CHANGED,
-            theme="streamlit"  # Use a valid theme (streamlit, alpine, balham, material)
-        )
-        selected_rows = grid_response["selected_rows"]
-
-        # Action buttons for selected parcels
-        b_zoom, b_kml_sel, b_shp_sel, b_kml_all, b_shp_all = st.columns(5)
-        # 1. Zoom to Selected
-        if b_zoom.button("Zoom to Selected"):
-            all_lats, all_lons = [], []
-            for row in selected_rows:
-                pid = row["Parcel ID"]
-                # Find matching feature in either QLD or NSW results
-                for feat in ss.features_qld + ss.features_nsw:
-                    props = feat["properties"]
-                    key = props.get("lotplan", props.get("lotidstring"))
-                    if key == pid:
-                        geom = feat["geometry"]
-                        # Get coordinates from Polygon or MultiPolygon
-                        if geom["type"] == "Polygon":
-                            coords = geom["coordinates"][0]
-                        elif geom["type"] == "MultiPolygon":
-                            coords = geom["coordinates"][0][0]  # first polygon of multipolygon
-                        else:
-                            coords = []  # other geometry types not expected here
-                        # Collect all latitude and longitude values
-                        for lon, lat in coords:
-                            all_lons.append(lon)
-                            all_lats.append(lat)
-            # Set map bounds in session state if we have coordinates
-            if all_lats and all_lons:
-                sw_corner = [min(all_lats), min(all_lons)]
-                ne_corner = [max(all_lats), max(all_lons)]
-                ss.zoom_bounds = [sw_corner, ne_corner]
-            else:
-                ss.zoom_bounds = None
-
-        # 2. Export Selected KML
-        if b_kml_sel.button("Export Selected KML"):
-            kml = simplekml.Kml()
-            # Convert color to KML format (aabbggrr hex)
-            alpha_hex = f"{int(ss.style_opacity/100 * 255):02x}"
-            rgb_hex = ss.style_fill.lstrip("#")
-            kml_color = alpha_hex + rgb_hex[4:6] + rgb_hex[2:4] + rgb_hex[0:2]
-            for row in selected_rows:
-                pid = row["Parcel ID"]
-                for feat in ss.features_qld + ss.features_nsw:
-                    props = feat["properties"]
-                    key = props.get("lotplan", props.get("lotidstring"))
-                    if key == pid:
-                        geom = feat["geometry"]
-                        poly = kml.newpolygon(name=pid)
-                        if geom["type"] == "Polygon":
-                            poly.outerboundaryis = geom["coordinates"][0]
-                        elif geom["type"] == "MultiPolygon":
-                            # For MultiPolygon, add all parts
-                            for part in geom["coordinates"]:
-                                inner_poly = kml.newpolygon(name=pid)
-                                inner_poly.outerboundaryis = part[0]
-                                inner_poly.style.polystyle.color = kml_color
-                                inner_poly.style.linestyle.color = kml_color
-                                inner_poly.style.linestyle.width = ss.style_weight
-                        # Apply style to KML polygon
-                        poly.style.polystyle.color = kml_color
-                        poly.style.linestyle.color = kml_color
-                        poly.style.linestyle.width = ss.style_weight
-            kml_bytes = kml.kml().encode("utf-8")
-            b_kml_sel.download_button("⬇️ KML", data=kml_bytes, file_name="selected_parcels.kml", mime="application/vnd.google-earth.kml+xml")
-
-        # 3. Export Selected SHP (Shapefile in ZIP)
-        if b_shp_sel.button("Export Selected SHP"):
-            rows, geoms = [], []
-            for row in selected_rows:
-                pid = row["Parcel ID"]
-                state = row["State"]
-                for feat in ss.features_qld + ss.features_nsw:
-                    props = feat["properties"]
-                    key = props.get("lotplan", props.get("lotidstring"))
-                    if key == pid:
-                        rows.append({"Parcel ID": pid, "State": state})
-                        geoms.append(shape(feat["geometry"]))
-            if rows:
-                gdf = gpd.GeoDataFrame(rows, geometry=geoms, crs="EPSG:4326")
-                # Helper to zip the shapefile components
-                def gdf_to_shp_zip(gdf):
-                    tmpdir = tempfile.mkdtemp()
-                    shp_path = os.path.join(tmpdir, "parcels.shp")
-                    gdf.to_file(shp_path, driver="ESRI Shapefile")
-                    buf = io.BytesIO()
-                    with zipfile.ZipFile(buf, "w") as zf:
-                        for fname in os.listdir(tmpdir):
-                            zf.write(os.path.join(tmpdir, fname), arcname=fname)
-                    return buf.getvalue()
-                zip_data = gdf_to_shp_zip(gdf)
-                b_shp_sel.download_button("⬇️ SHP", data=zip_data, file_name="selected_parcels.zip", mime="application/zip")
-
-        # 4. Export All KML
-        if b_kml_all.button("Export All KML"):
-            kml = simplekml.Kml()
-            alpha_hex = f"{int(ss.style_opacity/100 * 255):02x}"
-            rgb_hex = ss.style_fill.lstrip("#")
-            kml_color = alpha_hex + rgb_hex[4:6] + rgb_hex[2:4] + rgb_hex[0:2]
-            for feat in ss.features_qld + ss.features_nsw:
-                pid = feat["properties"].get("lotplan", feat["properties"].get("lotidstring", ""))
-                geom = feat["geometry"]
-                poly = kml.newpolygon(name=pid)
-                if geom["type"] == "Polygon":
-                    poly.outerboundaryis = geom["coordinates"][0]
-                elif geom["type"] == "MultiPolygon":
-                    for part in geom["coordinates"]:
-                        inner_poly = kml.newpolygon(name=pid)
-                        inner_poly.outerboundaryis = part[0]
-                        inner_poly.style.polystyle.color = kml_color
-                        inner_poly.style.linestyle.color = kml_color
-                        inner_poly.style.linestyle.width = ss.style_weight
-                poly.style.polystyle.color = kml_color
-                poly.style.linestyle.color = kml_color
-                poly.style.linestyle.width = ss.style_weight
-            kml_bytes = kml.kml().encode("utf-8")
-            b_kml_all.download_button("⬇️ KML", data=kml_bytes, file_name="all_parcels.kml", mime="application/vnd.google-earth.kml+xml")
-
-        # 5. Export All SHP
-        if b_shp_all.button("Export All SHP"):
-            rows, geoms = [], []
-            for feat in ss.features_qld + ss.features_nsw:
-                pid = feat["properties"].get("lotplan", feat["properties"].get("lotidstring", ""))
-                state = "QLD" if feat in ss.features_qld else "NSW"
-                rows.append({"Parcel ID": pid, "State": state})
-                geoms.append(shape(feat["geometry"]))
-            if rows:
-                gdf = gpd.GeoDataFrame(rows, geometry=geoms, crs="EPSG:4326")
-                def gdf_to_shp_zip(gdf):
-                    tmpdir = tempfile.mkdtemp()
-                    shp_path = os.path.join(tmpdir, "parcels.shp")
-                    gdf.to_file(shp_path, driver="ESRI Shapefile")
-                    buf = io.BytesIO()
-                    with zipfile.ZipFile(buf, "w") as zf:
-                        for fname in os.listdir(tmpdir):
-                            zf.write(os.path.join(tmpdir, fname), arcname=fname)
-                    return buf.getvalue()
-                zip_data = gdf_to_shp_zip(gdf)
-                b_shp_all.download_button("⬇️ SHP", data=zip_data, file_name="all_parcels.zip", mime="application/zip")
-
-# --- Map View Tab ---
-with tab_map:
-    # Initialize base map centered roughly over QLD/NSW
-    m = folium.Map(location=[-25.0, 145.0], zoom_start=6, control_scale=True)
-    folium.TileLayer("OpenStreetMap", name="OSM", overlay=False).add_to(m)
-    folium.TileLayer("CartoDB dark_matter", name="Carto Dark", overlay=False).add_to(m)
-    folium.TileLayer(
-        tiles="https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
-        attr="Google Satellite",
-        name="Google Satellite",
-        overlay=False
-    ).add_to(m)
-    # Add mouse position display and layer control toggler
-    MousePosition().add_to(m)
-    folium.LayerControl(collapsed=False).add_to(m)
-
-    # Add parcel GeoJSON features with the chosen style
-    style_function = lambda feature: {
-        "fillColor": ss.style_fill,
-        "color": ss.style_fill,
-        "fillOpacity": ss.style_opacity / 100.0,
-        "weight": ss.style_weight
-    }
-    for feat in ss.features_qld + ss.features_nsw:
-        folium.GeoJson(feat, style_function=style_function).add_to(m)
-
-    # If a zoom boundary is set (from "Zoom to Selected"), apply it
-    if ss.zoom_bounds:
-        try:
-            m.fit_bounds(ss.zoom_bounds)
-        except Exception:
-            pass
-        ss.zoom_bounds = None  # reset after using
-
-    # Render the Folium map in the Streamlit app
-    st_folium(m, width="100%", height=700)
+with col1:
+    # Initialize folium map
+    base_map = folium.Map(location=[-23.5, 143.0], zoom_start=5, tiles=None)
+    # Add base map layers
+    folium.TileLayer('OpenStreetMap', name='OpenStreetMap', control=True).add_to(base_map)
+    folium.TileLayer('CartoDB positron', name='CartoDB Positron', control=True).add_to(base_map)
+    folium.TileLayer('CartoDB dark_matter', name='CartoDB Dark', control=True).add_to(base_map)
+    folium.TileLayer(tiles='https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', attr='Google', name='Google Satellite', control=True).add_to(base_map)
+    # Add parcel features layer if available
+    if st.session_state.get('features') and st.session_state['features']:
+        features = st.session_state['features']
+        # Use current style settings from session_state
+        fill_color = st.session_state.get('fill_color', "#FF0000")
+        outline_color = st.session_state.get('outline_color', "#000000")
+        opacity = st.session_state.get('fill_opacity', 0.5)
+        weight = st.session_state.get('outline_weight', 2)
+        folium.GeoJson(
+            data={"type": "FeatureCollection", "features": features},
+            name="Parcels",
+            style_function=lambda feat: {"fillColor": fill_color, "color": outline_color, "weight": weight, "fillOpacity": opacity}
+        ).add_to(base_map)
+        # Determine bounds for zoom
+        if 'selected_features' in st.session_state and zoom_clicked and st.session_state['selected_features']:
+            bounds = get_bounds(st.session_state['selected_features'])
+        else:
+            bounds = get_bounds(features)
+        base_map.fit_bounds(bounds)
+    else:
+        # Default view covering QLD and NSW
+        base_map.fit_bounds([[-39, 137], [-9, 155]])
+    folium.LayerControl(collapsed=True).add_to(base_map)
+    # Render map to HTML and embed
+    map_html = base_map._repr_html_()
+    st.components.v1.html(map_html, height=600, width=None, scrolling=False)
