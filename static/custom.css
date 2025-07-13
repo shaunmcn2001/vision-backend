@@ -1,3 +1,22 @@
-.stDeckGlChart {
-    height: calc(100vh - 60px) !important; /* full viewport height minus any padding/header */
+/* Hide Streamlit header and footer */
+#MainMenu, footer {
+    visibility: hidden;
+}
+/* Sidebar styling */
+[data-testid="stSidebar"] {
+    background-color: #2B3035 !important;
+}
+[data-testid="stSidebar"] * {
+    color: #FFFFFF !important;
+}
+[data-testid="stSidebar"] input, [data-testid="stSidebar"] textarea {
+    color: #FFFFFF !important;
+}
+[data-testid="stSidebar"] div[data-baseweb="base-input"] {
+    background-color: #3E444A !important;
+}
+/* Main content area styling */
+[data-testid="stAppViewContainer"] {
+    background-color: #0E1117 !important;
+    color: #FFFFFF !important;
 }
