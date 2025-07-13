@@ -99,7 +99,8 @@ if panel_col:
                     "PlanningCadastre/LandParcelPropertyFramework/MapServer/4/query"
                 )
                 where = " OR ".join([f"lotplan='{i}'" for i in qld_ids])
-                params = {"where": where, "outFields":"lotplan,locality,lot_area",
+                params = {"where": where,
+                          "outFields":"lotplan,locality,lot_area",
                           "f":"geojson","outSR":"4326"}
                 try:
                     resp = requests.get(qld_url, params=params, timeout=12).json()
@@ -113,7 +114,8 @@ if panel_col:
                     "NSW_Cadastre/MapServer/9/query"
                 )
                 where = " OR ".join([f"lotidstring='{i}'" for i in nsw_ids])
-                params = {"where":where,"outFields":"lotidstring,planlotarea",
+                params = {"where":where,
+                          "outFields":"lotidstring,planlotarea",
                           "f":"geojson","outSR":"4326"}
                 try:
                     resp = requests.get(nsw_url, params=params, timeout=12).json()
@@ -149,9 +151,9 @@ if panel_col:
             fill = c1.color_picker("Fill Color",    st.session_state.style_fill)
             op   = c2.slider("Opacity (%)", 0,100,  st.session_state.style_opacity)
             wt   = c3.slider("Outline (px)",1,10,   st.session_state.style_weight)
-            st.session_state.style_fill = fill
+            st.session_state.style_fill    = fill
             st.session_state.style_opacity = op
-            st.session_state.style_weight = wt
+            st.session_state.style_weight  = wt
 
             st.markdown("**Search Results**")
             from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode
@@ -160,14 +162,15 @@ if panel_col:
             gb.configure_selection("multiple", use_checkbox=True)
             gb.configure_default_column(filter=True, sortable=True)
             grid = AgGrid(
-                df, gb.build(),
-                update_mode=GridUpdateMode.MODEL_CHANGED,
-                theme="dark"
+                df, 
+                gb.build(), 
+                update_mode=GridUpdateMode.MODEL_CHANGED, 
+                theme="balham-dark"
             )
             selected = grid["selected_rows"]
 
             b1, b2, b3, b4, b5 = st.columns(5)
-            # Zoom
+            # Zoom to Selected
             if b1.button("Zoom to Selected"):
                 lats, lons = [], []
                 for r in selected:
@@ -205,9 +208,9 @@ if panel_col:
                             g = feat["geometry"]
                             if g["type"] == "Polygon":
                                 poly.outerboundaryis = g["coordinates"][0]
-                            poly.style.polystyle.color = kcol
-                            poly.style.linestyle.color = kcol
-                            poly.style.linestyle.width = wt
+                            poly.style.polystyle.color   = kcol
+                            poly.style.linestyle.color   = kcol
+                            poly.style.linestyle.width   = wt
                 data = kml.kml().encode("utf-8")
                 b2.download_button("⬇️ KML", data, "selected.kml", "application/vnd.google-earth.kml+xml")
 
@@ -238,9 +241,9 @@ if panel_col:
                     g = feat["geometry"]
                     if g["type"] == "Polygon":
                         poly.outerboundaryis = g["coordinates"][0]
-                    poly.style.polystyle.color = kcol
-                    poly.style.linestyle.color = kcol
-                    poly.style.linestyle.width = wt
+                    poly.style.polystyle.color   = kcol
+                    poly.style.linestyle.color   = kcol
+                    poly.style.linestyle.width   = wt
                 data = kml.kml().encode("utf-8")
                 b4.download_button("⬇️ KML", data, "all_parcels.kml", "application/vnd.google-earth.kml+xml")
 
@@ -261,8 +264,8 @@ if panel_col:
 with map_col:
     m = folium.Map(location=[-25,145], zoom_start=6, control_scale=True)
     # Basemaps
-    folium.TileLayer("OpenStreetMap", name="OSM", overlay=False).add_to(m)
-    folium.TileLayer("CartoDB dark_matter", name="Carto Dark", overlay=False).add_to(m)
+    folium.TileLayer("OpenStreetMap",      name="OSM",         overlay=False).add_to(m)
+    folium.TileLayer("CartoDB dark_matter",name="Carto Dark",  overlay=False).add_to(m)
     folium.TileLayer(
         tiles="https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
         attr="Google Satellite",
@@ -270,16 +273,17 @@ with map_col:
         overlay=False,
         control=True
     ).add_to(m)
-    # Mouse coords & layer control
+    # Mouse coords & layers
     MousePosition().add_to(m)
     folium.LayerControl(collapsed=False).add_to(m)
-    # Draw search results
+    # Draw parcels
     style_fn = lambda feat: {
-        "fillColor": st.session_state.style_fill,
-        "color":     st.session_state.style_fill,
+        "fillColor":   st.session_state.style_fill,
+        "color":       st.session_state.style_fill,
         "fillOpacity": st.session_state.style_opacity/100,
-        "weight":    st.session_state.style_weight
+        "weight":      st.session_state.style_weight
     }
     for feat in st.session_state.features_qld + st.session_state.features_nsw:
         folium.GeoJson(feat, style_function=style_fn).add_to(m)
+
     st_folium(m, width="100%", height=700)
