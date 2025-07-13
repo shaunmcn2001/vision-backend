@@ -1,38 +1,83 @@
-/* drawer hidden off-canvas */
+/* ─── full‐screen canvas ───────────────────────────────── */
+body, #root, .main {
+  margin: 0;
+  padding: 0;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* remove Streamlit sidebar gutters when drawer is open */
+.stSidebar, .css-1d391kg { 
+  display: none !important;
+}
+
+/* ─── map container ───────────────────────────────────── */
+.leaflet-container {
+  width: 100vw !important;
+  height: 100vh !important;
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 1;
+}
+
+/* ─── drawer base styles ───────────────────────────────── */
 #drawer {
   position: fixed;
-  top: 0; left: 0;
-  width: 320px; height: 100vh;
+  top: 0;
+  left: 0;
+  width: 320px;
+  height: 100vh;
   background: #1f1f2e;
   color: #fff;
   transform: translateX(-100%);
-  transition: transform .3s ease;
-  z-index: 9999;
-  padding: 1rem;
+  transition: transform 0.3s ease;
+  z-index: 10000;
   overflow-y: auto;
   box-shadow: 2px 0 8px rgba(0,0,0,0.4);
   font-family: sans-serif;
+  padding: 1rem;
 }
-/* drawer open */
+
+/* slide open */
 #drawer.open {
   transform: translateX(0);
 }
-/* close button */
-#drawerClose {
-  position: absolute;
-  top: 0.5rem; right: 0.5rem;
-  background: transparent; border: none;
-  color: #fff; font-size: 1.5rem;
-  cursor: pointer;
-}
-/* hamburger toggle */
+
+/* ─── drawer toggle (hamburger) ───────────────────────── */
 #drawerToggle {
   position: fixed;
-  top: 1rem; left: 1rem;
-  background: #ff6600; border: none;
-  color: #fff; font-size: 1.2rem;
+  top: 1rem;
+  left: 1rem;
+  background: #ff6600;
+  color: #fff;
+  border: none;
+  font-size: 1.2rem;
   padding: 0.4rem 0.8rem;
-  border-radius: 4px; cursor: pointer;
-  z-index: 10000;
+  border-radius: 4px;
+  cursor: pointer;
+  z-index: 10001;
   box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+}
+
+/* ─── close button inside drawer ──────────────────────── */
+#drawerClose {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  background: transparent;
+  border: none;
+  color: #fff;
+  font-size: 1.5rem;
+  cursor: pointer;
+}
+
+/* ─── drawer content container ────────────────────────── */
+#drawerBody {
+  margin-top: 2rem;
+  line-height: 1.4;
+}
+/* override Streamlit’s default expander arrow colors */
+.streamlit-expanderHeader {
+  color: #ff6600 !important;
 }
