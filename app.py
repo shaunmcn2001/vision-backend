@@ -8,10 +8,10 @@ from streamlit_folium import st_folium
 from streamlit_option_menu import option_menu
 import pandas as pd
 import numpy as np
-import requests, json, io, tempfile, zipfile, os
+import requests, io, tempfile, zipfile, os
 import simplekml
 import geopandas as gpd
-from shapely.geometry import shape, mapping
+from shapely.geometry import shape
 from pyproj import Geod
 
 # ─── Page Config & CSS ───────────────────────────────────
@@ -24,8 +24,6 @@ st.markdown("""
 /* Dark theme adjustments */
 #MainMenu, footer, header {visibility:hidden !important;}
 div.block-container {padding:0 1rem !important;}
-/* Right-side panel hack (optional) */
-section[data-testid="stSidebar"] {left:unset !important; right:0 !important;}
 /* Folium layer control dark background */
 .leaflet-control-layers-list {
     background:rgba(40,40,40,0.8)!important;
@@ -83,7 +81,6 @@ with panel_col:
         for idv in ids:
             parts = idv.split("/")
             if len(parts)==3:
-                # e.g. 5/1/1000 or 5//15006
                 nsw_ids.append(f"{parts[0]}//{parts[2]}")
             elif len(parts)==2:
                 plan = parts[1].upper()
@@ -214,11 +211,10 @@ with panel_col:
         if b3.button("Export Selected SHP"):
             rows, geoms = [], []
             for r in selected:
-                pid=r["Parcel ID"]; stt=r["State"]
+                pid,stt=r["Parcel ID"],r["State"]
                 for feat in st.session_state.features_qld+st.session_state.features_nsw:
                     props=feat["properties"]
-                    key=props.get("lotplan",props.get("lotidstring"))
-                    if key==pid:
+                    if props.get("lotplan",props.get("lotidstring"))==pid:
                         rows.append({"Parcel ID":pid,"State":stt})
                         geoms.append(shape(feat["geometry"]))
             gdf = gpd.GeoDataFrame(rows, geometry=geoms, crs="EPSG:4326")
@@ -227,11 +223,11 @@ with panel_col:
 
         # Export All KML
         if b4.button("Export All KML"):
-            kml = simplekml.Kml()
+            kml= simplekml.Kml()
             ah = f"{int(op/100*255):02x}"; hc=fill.lstrip("#")
-            kcol = ah + hc[4:6]+hc[2:4]+hc[0:2]
+            kcol=ah+hc[4:6]+hc[2:4]+hc[0:2]
             for feat in st.session_state.features_qld+st.session_state.features_nsw:
-                pid = feat["properties"].get("lotplan",feat["properties"].get("lotidstring",""))
+                pid=feat["properties"].get("lotplan",feat["properties"].get("lotidstring",""))
                 poly=kml.newpolygon(name=pid)
                 g=feat["geometry"]
                 if g["type"]=="Polygon": poly.outerboundaryis=g["coordinates"][0]
@@ -256,14 +252,16 @@ with panel_col:
 
 # ─── Map Rendering ───────────────────────────────────────
 with map_col:
-    # Initialize map
     m = folium.Map(location=[-25,145], zoom_start=6, control_scale=True)
     # Basemaps
     folium.TileLayer("OpenStreetMap",    name="OSM",        overlay=False).add_to(m)
     folium.TileLayer("CartoDB dark_matter", name="Carto Dark", overlay=False).add_to(m)
     folium.TileLayer(
         tiles="https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
-        name="Google Satellite", overlay=False
+        attr="Google Satellite",
+        name="Google Satellite",
+        overlay=False,
+        control=True
     ).add_to(m)
     # Mouse position & layer control
     MousePosition().add_to(m)
