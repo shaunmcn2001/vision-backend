@@ -1,0 +1,10 @@
+.leaflet-container {
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+.ag-theme-streamlit {
+  font-size: 0.9rem;
+}
+button, .stButton>button {
+  border-radius: 4px;
+}
