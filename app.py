@@ -42,11 +42,8 @@ def generate_kml(features: list, region: str, fill_hex: str, fill_opacity: float
             planlabel = props.get("planlabel", "")
             placename = f"Lot {lot} {('Sec '+sec+' ' if sec else '')}{planlabel}"
         
-        # Simplified description without the table
-        description = placename  # Only the placename is included
-
+        # Removed description tag entirely
         kml_lines.append(f"<Placemark><name>{placename}</name>")
-        kml_lines.append(f"<description><![CDATA[{description}]]></description>")
         kml_lines.append("<Style>")
         kml_lines.append(f"<LineStyle><color>{outline_kml_color}</color><width>{outline_weight}</width></LineStyle>")
         kml_lines.append(f"<PolyStyle><color>{fill_kml_color}</color></PolyStyle>")
