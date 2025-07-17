@@ -32,3 +32,49 @@
 .kvDataTable table {
   font-size: 0.9em;
 }
+
+/* Loading spinner */
+.loading-icon {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 40px;
+  height: 40px;
+  border: 4px solid #f3f3f3;
+  border-top: 4px solid #00ff00;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  z-index: 1000;
+  display: none;
+}
+
+@keyframes spin {
+  0% {
+    transform: translate(-50%, -50%) rotate(0deg);
+  }
+  100% {
+    transform: translate(-50%, -50%) rotate(360deg);
+  }
+}
+
+.loading-active .loading-icon {
+  display: block;
+}
+
+/* Map sizing */
+[data-testid="stAppViewContainer"] .main .block-container {
+  padding: 0;
+}
+
+.map-container {
+  height: 100vh;
+  width: 100%;
+  overflow: auto;
+}
+
+.map-container iframe {
+  height: 100%;
+  width: 100%;
+  border: none;
+}

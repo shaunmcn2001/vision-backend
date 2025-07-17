@@ -1,11 +1,12 @@
 import io
 import os
 import zipfile
+from datetime import datetime
 
 
 def _hex_to_kml_color(hex_color: str, opacity: float) -> str:
     """Convert a hex color and opacity to a KML color string."""
-    hex_color = hex_color.lstrip('#')
+    hex_color = hex_color.lstrip("#")
     if len(hex_color) != 6:
         hex_color = "FFFFFF"
     r = hex_color[0:2]
@@ -30,8 +31,8 @@ def generate_kml(
     kml_lines = [
         '<?xml version="1.0" encoding="UTF-8"?>',
         '<kml xmlns="http://www.opengis.net/kml/2.2">',
-        f'<Document><name>{folder_name}</name>',
-        f'<Folder><name>{folder_name}</name>'
+        f"<Document><name>{folder_name}</name>",
+        f"<Folder><name>{folder_name}</name>",
     ]
     for feat in features:
         props = feat.get("properties", {})
@@ -47,33 +48,49 @@ def generate_kml(
 
         extended_data = "<ExtendedData>"
         extended_data += (
-            f"<Data name=\"qldglobe_place_name\"><value>{lot}"
+            f'<Data name="qldglobe_place_name"><value>{lot}'
             f"{plan if region == 'QLD' else planlabel}</value></Data>"
         )
-        extended_data += "<Data name=\"_labelid\"><value>places-label-1752714297825-1</value></Data>"
-        extended_data += "<Data name=\"_measureLabelsIds\"><value></value></Data>"
-        extended_data += f"<Data name=\"Lot\"><value>{lot}</value></Data>"
+        extended_data += (
+            '<Data name="_labelid"><value>places-label-1752714297825-1</value></Data>'
+        )
+        extended_data += '<Data name="_measureLabelsIds"><value></value></Data>'
+        extended_data += f'<Data name="Lot"><value>{lot}</value></Data>'
         extended_data += f"<Data name=\"Plan\"><value>{plan if region == 'QLD' else planlabel}</value></Data>"
         extended_data += f"<Data name=\"Lot/plan\"><value>{lot}{plan if region == 'QLD' else planlabel}</value></Data>"
-        extended_data += "<Data name=\"Lot area (m²)\"><value>5908410</value></Data>"
-        extended_data += "<Data name=\"Excluded area (m²)\"><value>0</value></Data>"
-        extended_data += "<Data name=\"Lot volume\"><value>0</value></Data>"
-        extended_data += "<Data name=\"Surveyed\"><value>Y</value></Data>"
-        extended_data += "<Data name=\"Tenure\"><value>Freehold</value></Data>"
-        extended_data += "<Data name=\"Parcel type\"><value>Lot Type Parcel</value></Data>"
-        extended_data += "<Data name=\"Coverage type\"><value>Base</value></Data>"
-        extended_data += "<Data name=\"Accuracy\"><value>UPGRADE ADJUSTMENT - 5M</value></Data>"
-        extended_data += "<Data name=\"st_area(shape)\"><value>0.0005218316994782257</value></Data>"
-        extended_data += "<Data name=\"st_perimeter(shape)\"><value>0.0913818171562543</value></Data>"
-        extended_data += "<Data name=\"coordinate-systems\"><value>GDA2020 lat/lng</value></Data>"
-        current_date_time = "05:14 PM AEST on Thursday, July 17, 2025"
-        extended_data += f"<Data name=\"Generated On\"><value>{current_date_time}</value></Data>"
+        extended_data += '<Data name="Lot area (m²)"><value>5908410</value></Data>'
+        extended_data += '<Data name="Excluded area (m²)"><value>0</value></Data>'
+        extended_data += '<Data name="Lot volume"><value>0</value></Data>'
+        extended_data += '<Data name="Surveyed"><value>Y</value></Data>'
+        extended_data += '<Data name="Tenure"><value>Freehold</value></Data>'
+        extended_data += (
+            '<Data name="Parcel type"><value>Lot Type Parcel</value></Data>'
+        )
+        extended_data += '<Data name="Coverage type"><value>Base</value></Data>'
+        extended_data += (
+            '<Data name="Accuracy"><value>UPGRADE ADJUSTMENT - 5M</value></Data>'
+        )
+        extended_data += (
+            '<Data name="st_area(shape)"><value>0.0005218316994782257</value></Data>'
+        )
+        extended_data += (
+            '<Data name="st_perimeter(shape)"><value>0.0913818171562543</value></Data>'
+        )
+        extended_data += (
+            '<Data name="coordinate-systems"><value>GDA2020 lat/lng</value></Data>'
+        )
+        current_date_time = datetime.now().strftime("%I:%M %p %A, %B %d, %Y")
+        extended_data += (
+            f'<Data name="Generated On"><value>{current_date_time}</value></Data>'
+        )
         extended_data += "</ExtendedData>"
 
         kml_lines.append(f"<Placemark><name>{placename}</name>")
         kml_lines.append(extended_data)
         kml_lines.append("<Style>")
-        kml_lines.append(f"<LineStyle><color>{outline_kml_color}</color><width>{outline_weight}</width></LineStyle>")
+        kml_lines.append(
+            f"<LineStyle><color>{outline_kml_color}</color><width>{outline_weight}</width></LineStyle>"
+        )
         kml_lines.append(f"<PolyStyle><color>{fill_kml_color}</color></PolyStyle>")
         kml_lines.append("</Style>")
         geom = feat.get("geometry", {})
@@ -115,6 +132,7 @@ def generate_kml(
 def generate_shapefile(features: list, region: str) -> bytes:
     """Generate a zipped shapefile for the provided features."""
     import shapefile
+
     temp_dir = "temp_shp_export"
     os.makedirs(temp_dir, exist_ok=True)
     base_path = os.path.join(temp_dir, "parcels")
@@ -204,6 +222,7 @@ def get_bounds(features: list):
     if min_lat > max_lat or min_lon > max_lon:
         return [[-39, 137], [-9, 155]]
     return [[min_lat, min_lon], [max_lat, max_lon]]
+
 
 __all__ = [
     "_hex_to_kml_color",
