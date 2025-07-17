@@ -13,3 +13,9 @@
   width: 100%;
   border: none;
 }
+
+/* Increase sidebar width so grid columns are easier to read */
+[data-testid="stSidebar"] {
+  width: 400px;
+  min-width: 400px;
+}
