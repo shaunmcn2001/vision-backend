@@ -1,11 +1,17 @@
 import streamlit as st
-import os
+from pathlib import Path
 
 st.set_page_config(page_title="Parcel Viewer", layout="wide")
 
-css_path = os.path.join(os.path.dirname(__file__), "style.css")
-with open(css_path) as f:
-    st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
+css_path = Path(__file__).resolve().parent / "style.css"
+if css_path.exists():
+    try:
+        css = css_path.read_text()
+        st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)
+    except Exception as e:  # pragma: no cover - debug helper
+        st.error(f"Failed to load CSS: {e}")
+else:
+    st.warning(f"CSS file not found: {css_path}")
 
 import requests, folium, pandas as pd, re
 from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode
