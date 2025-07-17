@@ -42,13 +42,8 @@ def generate_kml(features: list, region: str, fill_hex: str, fill_opacity: float
             planlabel = props.get("planlabel", "")
             placename = f"Lot {lot} {('Sec '+sec+' ' if sec else '')}{planlabel}"
         
-        # Create popup content with all properties
-        description = "<table border='1' style='border-collapse: collapse;'>"
-        description += "<tr><th style='padding: 5px; border: 1px solid black;'>Property</th><th style='padding: 5px; border: 1px solid black;'>Value</th></tr>"
-        for key, value in props.items():
-            if value:  # Only include non-empty values
-                description += f"<tr><td style='padding: 5px; border: 1px solid black;'>{key}</td><td style='padding: 5px; border: 1px solid black;'>{value}</td></tr>"
-        description += "</table>"
+        # Simplified description without the table
+        description = placename  # Only the placename is included
 
         kml_lines.append(f"<Placemark><name>{placename}</name>")
         kml_lines.append(f"<description><![CDATA[{description}]]></description>")
