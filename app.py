@@ -26,6 +26,11 @@ st.markdown("""
     .loading-active .loading-icon {
         display: block;
     }
+    .map-container {
+        height: 100vh;
+        max-height: 1000px; /* Fallback max height */
+        overflow: auto;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -85,7 +90,7 @@ def generate_kml(features: list, region: str, fill_hex: str, fill_opacity: float
         extended_data += "<Data name=\"st_perimeter(shape)\"><value>0.0913818171562543</value></Data>"
         extended_data += "<Data name=\"coordinate-systems\"><value>GDA2020 lat/lng</value></Data>"
         # Add current date and time
-        current_date_time = "04:57 PM AEST on Thursday, July 17, 2025"
+        current_date_time = "05:05 PM AEST on Thursday, July 17, 2025"
         extended_data += f"<Data name=\"Generated On\"><value>{current_date_time}</value></Data>"
         extended_data += "</ExtendedData>"
 
@@ -213,7 +218,7 @@ def get_bounds(features: list):
         return [[-39, 137], [-9, 155]]
     return [[min_lat, min_lon], [max_lat, max_lon]]
 
-# Move to sidebar
+# Sidebar for controls
 with st.sidebar:
     st.markdown("<div class='loading-icon'></div>", unsafe_allow_html=True)
     with st.expander("Search Parcels", expanded=True):
@@ -221,7 +226,6 @@ with st.sidebar:
             bulk_query = st.text_area("Parcel search (bulk):", "", help="Enter Lot/Plan (QLD) or Lot/Section/Plan (NSW) one per line.")
             submit = st.form_submit_button("Search")
     if submit:
-        # Set loading state to True
         st.session_state['loading'] = True
         st.markdown("<script>document.querySelector('.stApp').classList.add('loading-active');</script>", unsafe_allow_html=True)
         inputs = [line.strip() for line in bulk_query.splitlines() if line.strip()]
@@ -283,7 +287,6 @@ with st.sidebar:
         st.session_state['features'] = all_feats
         st.session_state['regions'] = all_regions
         st.success(f"Found {len(all_feats)} parcels.")
-        # Set loading state to False and hide icon
         st.session_state['loading'] = False
         st.markdown("<script>document.querySelector('.stApp').classList.remove('loading-active');</script>", unsafe_allow_html=True)
 
@@ -323,6 +326,7 @@ with st.sidebar:
                         if props.get("lotnumber") == sel["Lot"] and props.get("planlabel") == sel["Plan"]:
                             selected_features.append(feat)
                             break
+            export_region = "QLD" if "QLD" in st.session_state['regions'] else ("NSW" if "NSW" in st.session_state['regions'] else "QLD")
             with st.spinner("Preparing KML..."):
                 st.download_button("Download KML", data=generate_kml(selected_features or st.session_state['features'], export_region, fill_color, fill_opacity, outline_color, outline_weight, folder_name), file_name="parcels.kml")
             with st.spinner("Preparing SHP..."):
@@ -330,6 +334,7 @@ with st.sidebar:
 
 # Map in main area
 with st.container():
+    st.markdown('<div class="map-container">', unsafe_allow_html=True)
     base_map = folium.Map(location=[-23.5, 143.0], zoom_start=5, tiles=None, zoomControl=True)
     folium.TileLayer('OpenStreetMap', name='OpenStreetMap', control=True).add_to(base_map)
     folium.TileLayer('CartoDB positron', name='CartoDB Positron', control=True).add_to(base_map)
@@ -352,4 +357,5 @@ with st.container():
         base_map.fit_bounds([[-39, 137], [-9, 155]])
     folium.LayerControl(collapsed=False).add_to(base_map)
     map_html = base_map._repr_html_()
-    st.components.v1.html(map_html, height="100vh", width=None, scrolling=False)
+    st.components.v1.html(map_html, height=1000, width=None, scrolling=True)
+    st.markdown('</div>', unsafe_allow_html=True)
