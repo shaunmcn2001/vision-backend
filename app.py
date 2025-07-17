@@ -2,8 +2,12 @@ import streamlit as st
 
 st.set_page_config(page_title="Parcel Viewer", layout="wide")
 
+with open("style.css") as css_file:
+    st.markdown(f"<style>{css_file.read()}</style>", unsafe_allow_html=True)
+
 import requests, folium, pandas as pd, re
 from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode
+from st_aggrid.shared import ColumnsAutoSizeMode
 
 from kml_utils import (
     _hex_to_kml_color,
@@ -166,6 +170,8 @@ with st.sidebar:
                 height=300,
                 update_mode=GridUpdateMode.SELECTION_CHANGED,
                 theme="streamlit",
+                fit_columns_on_grid_load=True,
+                columns_auto_size_mode=ColumnsAutoSizeMode.FIT_ALL_COLUMNS_TO_VIEW,
             )
             sel_rows = grid_resp.get("selected_rows", [])
             selected_features = []
