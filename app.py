@@ -41,7 +41,17 @@ def generate_kml(features: list, region: str, fill_hex: str, fill_opacity: float
             sec = props.get("sectionnumber", "") or ""
             planlabel = props.get("planlabel", "")
             placename = f"Lot {lot} {('Sec '+sec+' ' if sec else '')}{planlabel}"
+        
+        # Create popup content with all properties
+        description = "<table border='1' style='border-collapse: collapse;'>"
+        description += "<tr><th style='padding: 5px; border: 1px solid black;'>Property</th><th style='padding: 5px; border: 1px solid black;'>Value</th></tr>"
+        for key, value in props.items():
+            if value:  # Only include non-empty values
+                description += f"<tr><td style='padding: 5px; border: 1px solid black;'>{key}</td><td style='padding: 5px; border: 1px solid black;'>{value}</td></tr>"
+        description += "</table>"
+
         kml_lines.append(f"<Placemark><name>{placename}</name>")
+        kml_lines.append(f"<description><![CDATA[{description}]]></description>")
         kml_lines.append("<Style>")
         kml_lines.append(f"<LineStyle><color>{outline_kml_color}</color><width>{outline_weight}</width></LineStyle>")
         kml_lines.append(f"<PolyStyle><color>{fill_kml_color}</color></PolyStyle>")
@@ -166,7 +176,6 @@ def get_bounds(features: list):
 col1, col2 = st.columns([3, 1], gap="small")
 
 with col2:
-    # Multi-line input for bulk search
     with st.form("search_form"):
         bulk_query = st.text_area(
             "Parcel search (bulk):",
@@ -179,7 +188,6 @@ with col2:
         all_feats = []
         all_regions = []
         for user_input in inputs:
-            # NSW: 5//123456 or 5/1/123456
             if "/" in user_input:
                 region = "NSW"
                 parts = user_input.split("/")
@@ -189,7 +197,6 @@ with col2:
                     lot_str, sec_str, plan_str = parts[0].strip(), "", parts[1].strip()
                 else:
                     lot_str, sec_str, plan_str = "", "", ""
-                # Accept both Lot/Section/Plan and Lot//Plan (as per your rules)
                 if sec_str == "" and "//" in user_input:
                     lot_str, plan_str = user_input.split("//")
                     sec_str = ""
@@ -239,13 +246,11 @@ with col2:
     if st.session_state.get('features'):
         features = st.session_state['features']
         regions = st.session_state.get('regions', [])
-        # Default: if at least 1 QLD, use "QLD" for export naming, etc.
         export_region = "QLD" if "QLD" in regions else ("NSW" if "NSW" in regions else "QLD")
         fill_color = st.color_picker("Fill color", "#FF0000", key="fill_color")
         outline_color = st.color_picker("Outline color", "#000000", key="outline_color")
         fill_opacity = st.slider("Fill opacity", 0.0, 1.0, 0.5, step=0.01, key="fill_opacity")
         outline_weight = st.slider("Outline weight", 1, 10, 2, key="outline_weight")
-        # Results table
         data = []
         for i, feat in enumerate(features):
             props = feat.get("properties", {})
@@ -259,7 +264,6 @@ with col2:
         gridOptions = gb.build()
         grid_resp = AgGrid(df, gridOptions=gridOptions, height=250, update_mode=GridUpdateMode.SELECTION_CHANGED, theme="streamlit")
         sel_rows = grid_resp.get("selected_rows", [])
-        # Map selected to features
         selected_features = []
         for sel in sel_rows:
             for i, feat in enumerate(features):
@@ -274,14 +278,13 @@ with col2:
                         props.get("planlabel") == sel["Plan"]):
                         selected_features.append(feat)
                         break
-        # Exports
         st.download_button("Download KML", data=generate_kml(selected_features or features, export_region, fill_color, fill_opacity, outline_color, outline_weight), file_name="parcels.kml")
-        st.download_button("Download SHP", data=generate_shapefile(selected_features or features, export_region), file_name="parcels.zip")
+        st.download_button("Download SHP", data=generate_shapefile(selected_features or features, export_region), file_name=" parcels.zip")
 
 with col1:
     base_map = folium.Map(location=[-23.5, 143.0], zoom_start=5, tiles=None)
     folium.TileLayer('OpenStreetMap', name='OpenStreetMap', control=True).add_to(base_map)
-    folium.TileLayer('CartoDB positron', name='CartoDB Positron', control=True).add_to(base_map)
+    folium.TileLayer('CartoDB positron', name='CartoDB Positron', control=True).add arabe_map)
     folium.TileLayer('CartoDB dark_matter', name='CartoDB Dark', control=True).add_to(base_map)
     folium.TileLayer(tiles='https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', attr='Google', name='Google Satellite', control=True).add_to(base_map)
     if st.session_state.get('features') and st.session_state['features']:
