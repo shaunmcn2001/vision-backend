@@ -255,16 +255,13 @@ with col2:
         for i, feat in enumerate(features):
             props = feat.get("properties", {})
             if regions[i] == "QLD":
-                data.append({"Region": "QLD", "Lot": props.get("lot"), "Plan": props.get("plan"), "Locality": props.get("locality", "")})
+                data.append({"Lot": props.get("lot"), "Plan": props.get("plan")})
             else:
-                data.append({"Region": "NSW", "Lot": props.get("lotnumber"), "Section": props.get("sectionnumber", ""), "Plan": props.get("planlabel", "")})
+                data.append({"Lot": props.get("lotnumber"), "Plan": props.get("planlabel", "")})
         df = pd.DataFrame(data)
         gb = GridOptionsBuilder.from_dataframe(df)
-        gb.configure_column("Region", headerName="Region", editable=False)
         gb.configure_column("Lot", headerName="Lot", editable=False)
-        gb.configure_column("Section", headerName="Section", editable=False)
         gb.configure_column("Plan", headerName="Plan", editable=False)
-        gb.configure_column("Locality", headerName="Locality", editable=False)
         gb.configure_selection(selection_mode="multiple", use_checkbox=True)
         gridOptions = gb.build()
         grid_resp = AgGrid(df, gridOptions=gridOptions, height=250, update_mode=GridUpdateMode.SELECTION_CHANGED, theme="streamlit")
@@ -273,14 +270,12 @@ with col2:
         for sel in sel_rows:
             for i, feat in enumerate(features):
                 props = feat.get("properties", {})
-                if sel["Region"] == "QLD":
+                if regions[i] == "QLD":
                     if props.get("lot") == sel["Lot"] and props.get("plan") == sel["Plan"]:
                         selected_features.append(feat)
                         break
                 else:
-                    if (props.get("lotnumber") == sel["Lot"] and
-                        (props.get("sectionnumber", "") == sel.get("Section", "")) and
-                        props.get("planlabel") == sel["Plan"]):
+                    if props.get("lotnumber") == sel["Lot"] and props.get("planlabel") == sel["Plan"]:
                         selected_features.append(feat)
                         break
         st.download_button("Download KML", data=generate_kml(selected_features or features, export_region, fill_color, fill_opacity, outline_color, outline_weight), file_name="parcels.kml")
