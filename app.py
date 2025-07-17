@@ -95,7 +95,7 @@ def generate_kml(features: list, region: str, fill_hex: str, fill_opacity: float
         extended_data += "<Data name=\"st_perimeter(shape)\"><value>0.0913818171562543</value></Data>"
         extended_data += "<Data name=\"coordinate-systems\"><value>GDA2020 lat/lng</value></Data>"
         # Add current date and time
-        current_date_time = "05:09 PM AEST on Thursday, July 17, 2025"
+        current_date_time = "05:14 PM AEST on Thursday, July 17, 2025"
         extended_data += f"<Data name=\"Generated On\"><value>{current_date_time}</value></Data>"
         extended_data += "</ExtendedData>"
 
@@ -363,5 +363,5 @@ with map_col:
         base_map.fit_bounds([[-39, 137], [-9, 155]])
     folium.LayerControl(collapsed=False).add_to(base_map)
     map_html = base_map._repr_html_()
-    st.components.v1.html(map_html, height=100%, width=None, scrolling=True)
+    st.components.v1.html(map_html, width=None, scrolling=True)
     st.markdown('</div>', unsafe_allow_html=True)
