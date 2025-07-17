@@ -5,36 +5,26 @@ st.markdown("""
     <style>
     #MainMenu, header, footer {visibility: hidden;}
     [data-testid="stAppViewContainer"] .main .block-container {padding: 0;}
-    .loading-overlay {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: rgba(0, 0, 0, 0.5);
-        display: flex;
-        justify-content: center;
-        align-items: center;
+    .loading-icon {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 40px;
+        height: 40px;
+        border: 4px solid #f3f3f3;
+        border-top: 4px solid #00ff00;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
         z-index: 1000;
-        color: white;
-        font-size: 20px;
+        display: none;
     }
-    .loading-bar {
-        width: 50%;
-        height: 20px;
-        background: #333;
-        border-radius: 10px;
-        overflow: hidden;
+    @keyframes spin {
+        0% { transform: translate(-50%, -50%) rotate(0deg); }
+        100% { transform: translate(-50%, -50%) rotate(360deg); }
     }
-    .loading-progress {
-        height: 100%;
-        background: #00ff00;
-        width: 0;
-        animation: loading 2s infinite;
-    }
-    @keyframes loading {
-        0% { width: 0; }
-        100% { width: 100%; }
+    .loading-active .loading-icon {
+        display: block;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -94,7 +84,7 @@ def generate_kml(features: list, region: str, fill_hex: str, fill_opacity: float
         extended_data += "<Data name=\"st_perimeter(shape)\"><value>0.0913818171562543</value></Data>"
         extended_data += "<Data name=\"coordinate-systems\"><value>GDA2020 lat/lng</value></Data>"
         # Add current date and time
-        current_date_time = "02:17 PM AEST on Thursday, July 17, 2025"
+        current_date_time = "02:20 PM AEST on Thursday, July 17, 2025"
         extended_data += f"<Data name=\"Generated On\"><value>{current_date_time}</value></Data>"
         extended_data += "</ExtendedData>"
 
@@ -223,7 +213,12 @@ def get_bounds(features: list):
 
 col1, col2 = st.columns([3, 1], gap="small")
 
+# Initialize session state for loading
+if 'loading' not in st.session_state:
+    st.session_state['loading'] = False
+
 with col2:
+    st.markdown("<div class='loading-icon'></div>", unsafe_allow_html=True)
     with st.form("search_form"):
         bulk_query = st.text_area(
             "Parcel search (bulk):",
@@ -232,8 +227,9 @@ with col2:
         )
         submit = st.form_submit_button("Search")
     if submit:
-        # Show loading overlay
-        st.markdown("<div class='loading-overlay'><div class='loading-bar'><div class='loading-progress'></div></div><p>Searching parcels...</p></div>", unsafe_allow_html=True)
+        # Set loading state to True
+        st.session_state['loading'] = True
+        st.markdown("<script>document.querySelector('.stApp').classList.add('loading-active');</script>", unsafe_allow_html=True)
         inputs = [line.strip() for line in bulk_query.splitlines() if line.strip()]
         all_feats = []
         all_regions = []
@@ -292,8 +288,9 @@ with col2:
                     all_regions.append("QLD")
         st.session_state['features'] = all_feats
         st.session_state['regions'] = all_regions
-        # Hide loading overlay after search
-        st.markdown("<script>document.querySelector('.loading-overlay').style.display = 'none';</script>", unsafe_allow_html=True)
+        # Set loading state to False and hide icon
+        st.session_state['loading'] = False
+        st.markdown("<script>document.querySelector('.stApp').classList.remove('loading-active');</script>", unsafe_allow_html=True)
 
     if st.session_state.get('features'):
         features = st.session_state['features']
@@ -342,7 +339,7 @@ with col1:
     if st.session_state.get('features') and st.session_state['features']:
         features = st.session_state['features']
         fill_color = st.session_state.get('fill_color', "#FF0000")
-        outline_color = st.session_state.get('outline_color', "#000000")
+        outline_color = st.session_state.get('fill_color', "#000000")
         opacity = st.session_state.get('fill_opacity', 0.5)
         weight = st.session_state.get('outline_weight', 2)
         folium.GeoJson(
