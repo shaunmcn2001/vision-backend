@@ -2,46 +2,8 @@ import streamlit as st
 
 st.set_page_config(page_title="Parcel Viewer", layout="wide")
 
-st.markdown(
-    """
-    <style>
-    #MainMenu, header, footer {visibility: hidden;}
-    [data-testid="stAppViewContainer"] .main .block-container {padding: 0;}
-    .loading-icon {
-        position: absolute;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        width: 40px;
-        height: 40px;
-        border: 4px solid #f3f3f3;
-        border-top: 4px solid #00ff00;
-        border-radius: 50%;
-        animation: spin 1s linear infinite;
-        z-index: 1000;
-        display: none;
-    }
-    @keyframes spin {
-        0% { transform: translate(-50%, -50%) rotate(0deg); }
-        100% { transform: translate(-50%, -50%) rotate(360deg); }
-    }
-    .loading-active .loading-icon {
-        display: block;
-    }
-    .map-container {
-        height: 100vh;
-        width: 100%;
-        overflow: auto;
-    }
-    .map-container iframe {
-        height: 100%;
-        width: 100%;
-        border: none;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
+with open("style.css") as f:
+    st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
 
 import requests, folium, pandas as pd, re
 from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode
@@ -54,7 +16,7 @@ from kml_utils import (
 )
 
 # Sidebar and map layout
-map_col, sidebar_col = st.columns([4, 1], gap="small")
+map_col, sidebar_col = st.columns([5, 1], gap="small")
 
 with sidebar_col:
     st.markdown("<div class='loading-icon'></div>", unsafe_allow_html=True)
