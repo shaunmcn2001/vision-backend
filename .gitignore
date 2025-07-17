@@ -1,0 +1,22 @@
+# Bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Test caches
+.pytest_cache/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor directories
+.vscode/
+.idea/
+
+# Environments
+.env
+.venv/
+
+# Misc
+*.log
