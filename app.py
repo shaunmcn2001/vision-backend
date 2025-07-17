@@ -49,19 +49,20 @@ def generate_kml(features: list, region: str, fill_hex: str, fill_opacity: float
     kml_lines = [
         '<?xml version="1.0" encoding="UTF-8"?>',
         '<kml xmlns="http://www.opengis.net/kml/2.2">',
-        f'<Document><name>{folder_name}</name>'
+        f'<Document><name>{folder_name}</name>',
+        f'<Folder><name>{folder_name}</name>'
     ]
     for feat in features:
         props = feat.get("properties", {})
         if region == "QLD":
             lot = props.get("lot", "")
             plan = props.get("plan", "")
-            lot_folder = f"Lot {lot} Plan {plan}"
+            placename = f"Lot {lot} Plan {plan}"
         else:
             lot = props.get("lotnumber", "")
             sec = props.get("sectionnumber", "") or ""
             planlabel = props.get("planlabel", "")
-            lot_folder = f"Lot {lot} {'Section ' + sec + ' ' if sec else ''}{planlabel}"
+            placename = f"Lot {lot} {'Section ' + sec + ' ' if sec else ''}{planlabel}"
         
         # ExtendedData section with specific Data elements
         extended_data = "<ExtendedData>"
@@ -84,12 +85,11 @@ def generate_kml(features: list, region: str, fill_hex: str, fill_opacity: float
         extended_data += "<Data name=\"st_perimeter(shape)\"><value>0.0913818171562543</value></Data>"
         extended_data += "<Data name=\"coordinate-systems\"><value>GDA2020 lat/lng</value></Data>"
         # Add current date and time
-        current_date_time = "02:24 PM AEST on Thursday, July 17, 2025"
+        current_date_time = "02:39 PM AEST on Thursday, July 17, 2025"
         extended_data += f"<Data name=\"Generated On\"><value>{current_date_time}</value></Data>"
         extended_data += "</ExtendedData>"
 
-        kml_lines.append(f"<Folder><name>{lot_folder}</name>")
-        kml_lines.append(f"<Placemark><name>{lot_folder}</name>")
+        kml_lines.append(f"<Placemark><name>{placename}</name>")
         kml_lines.append(extended_data)
         kml_lines.append("<Style>")
         kml_lines.append(f"<LineStyle><color>{outline_kml_color}</color><width>{outline_weight}</width></LineStyle>")
@@ -126,7 +126,7 @@ def generate_kml(features: list, region: str, fill_hex: str, fill_opacity: float
         if len(polygons) > 1:
             kml_lines.append("</MultiGeometry>")
         kml_lines.append("</Placemark>")
-        kml_lines.append("</Folder>")
+    kml_lines.append("</Folder>")
     kml_lines.append("</Document></kml>")
     return "\n".join(kml_lines)
 
