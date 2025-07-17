@@ -76,7 +76,10 @@ def generate_kml(features: list, region: str, fill_hex: str, fill_opacity: float
         
         # ExtendedData section with specific Data elements
         extended_data = "<ExtendedData>"
-        extended_data += f"<Data name=\"qldglobe_place_name\"><value>{lot}{plan}</value></Data>"  # For QLD
+        extended_data += (
+            f"<Data name=\"qldglobe_place_name\"><value>{lot}"
+            f"{plan if region == 'QLD' else planlabel}</value></Data>"
+        )
         extended_data += "<Data name=\"_labelid\"><value>places-label-1752714297825-1</value></Data>"
         extended_data += "<Data name=\"_measureLabelsIds\"><value></value></Data>"
         extended_data += f"<Data name=\"Lot\"><value>{lot}</value></Data>"
