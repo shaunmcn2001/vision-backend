@@ -112,14 +112,31 @@ with st.sidebar:
 
     if st.session_state.get("features"):
         with st.expander("Styling Options", expanded=True):
-            fill_color = st.color_picker("Fill color", "#FF0000", key="fill_color")
-            outline_color = st.color_picker(
-                "Outline color", "#000000", key="outline_color"
-            )
-            fill_opacity = st.slider(
-                "Fill opacity", 0.0, 1.0, 0.5, step=0.01, key="fill_opacity"
-            )
-            outline_weight = st.slider("Outline weight", 1, 10, 2, key="outline_weight")
+            fc_col, fo_col = st.columns([2, 1])
+            with fc_col:
+                fill_color = st.color_picker("Fill color", "#FF0000", key="fill_color")
+            with fo_col:
+                fill_opacity = st.number_input(
+                    "Opacity",
+                    min_value=0.0,
+                    max_value=1.0,
+                    value=0.5,
+                    step=0.01,
+                    key="fill_opacity",
+                )
+
+            oc_col, ow_col = st.columns([2, 1])
+            with oc_col:
+                outline_color = st.color_picker("Outline color", "#000000", key="outline_color")
+            with ow_col:
+                outline_weight = st.number_input(
+                    "Weight",
+                    min_value=1,
+                    max_value=10,
+                    value=2,
+                    step=1,
+                    key="outline_weight",
+                )
         with st.expander("Export Options", expanded=True):
             folder_name = st.text_input(
                 "KML Folder Name", value="Parcels", key="folder_name"
