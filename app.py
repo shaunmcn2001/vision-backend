@@ -28,8 +28,13 @@ st.markdown("""
     }
     .map-container {
         height: 100vh;
-        max-height: 1000px; /* Fallback max height */
+        width: 100%;
         overflow: auto;
+    }
+    .map-container iframe {
+        height: 100%;
+        width: 100%;
+        border: none;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -90,7 +95,7 @@ def generate_kml(features: list, region: str, fill_hex: str, fill_opacity: float
         extended_data += "<Data name=\"st_perimeter(shape)\"><value>0.0913818171562543</value></Data>"
         extended_data += "<Data name=\"coordinate-systems\"><value>GDA2020 lat/lng</value></Data>"
         # Add current date and time
-        current_date_time = "05:05 PM AEST on Thursday, July 17, 2025"
+        current_date_time = "05:09 PM AEST on Thursday, July 17, 2025"
         extended_data += f"<Data name=\"Generated On\"><value>{current_date_time}</value></Data>"
         extended_data += "</ExtendedData>"
 
@@ -218,8 +223,10 @@ def get_bounds(features: list):
         return [[-39, 137], [-9, 155]]
     return [[min_lat, min_lon], [max_lat, max_lon]]
 
-# Sidebar for controls
-with st.sidebar:
+# Sidebar and map layout
+map_col, sidebar_col = st.columns([3, 1], gap="small")
+
+with sidebar_col:
     st.markdown("<div class='loading-icon'></div>", unsafe_allow_html=True)
     with st.expander("Search Parcels", expanded=True):
         with st.form("search_form"):
@@ -332,8 +339,7 @@ with st.sidebar:
             with st.spinner("Preparing SHP..."):
                 st.download_button("Download SHP", data=generate_shapefile(selected_features or st.session_state['features'], export_region), file_name="parcels.zip")
 
-# Map in main area
-with st.container():
+with map_col:
     st.markdown('<div class="map-container">', unsafe_allow_html=True)
     base_map = folium.Map(location=[-23.5, 143.0], zoom_start=5, tiles=None, zoomControl=True)
     folium.TileLayer('OpenStreetMap', name='OpenStreetMap', control=True).add_to(base_map)
@@ -357,5 +363,5 @@ with st.container():
         base_map.fit_bounds([[-39, 137], [-9, 155]])
     folium.LayerControl(collapsed=False).add_to(base_map)
     map_html = base_map._repr_html_()
-    st.components.v1.html(map_html, height=1000, width=None, scrolling=True)
+    st.components.v1.html(map_html, height=100%, width=None, scrolling=True)
     st.markdown('</div>', unsafe_allow_html=True)
