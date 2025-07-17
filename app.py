@@ -5,6 +5,37 @@ st.markdown("""
     <style>
     #MainMenu, header, footer {visibility: hidden;}
     [data-testid="stAppViewContainer"] .main .block-container {padding: 0;}
+    .loading-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.5);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 1000;
+        color: white;
+        font-size: 20px;
+    }
+    .loading-bar {
+        width: 50%;
+        height: 20px;
+        background: #333;
+        border-radius: 10px;
+        overflow: hidden;
+    }
+    .loading-progress {
+        height: 100%;
+        background: #00ff00;
+        width: 0;
+        animation: loading 2s infinite;
+    }
+    @keyframes loading {
+        0% { width: 0; }
+        100% { width: 100%; }
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -50,8 +81,8 @@ def generate_kml(features: list, region: str, fill_hex: str, fill_opacity: float
         extended_data += f"<Data name=\"Lot\"><value>{lot}</value></Data>"
         extended_data += f"<Data name=\"Plan\"><value>{plan if region == 'QLD' else planlabel}</value></Data>"
         extended_data += f"<Data name=\"Lot/plan\"><value>{lot}{plan if region == 'QLD' else planlabel}</value></Data>"
-        # Placeholder values for missing data (to be adjusted based on actual props if available)
-        extended_data += "<Data name=\"Lot area (m²)\"><value>5908410</value></Data>"  # Example value
+        # Placeholder values for missing data
+        extended_data += "<Data name=\"Lot area (m²)\"><value>5908410</value></Data>"
         extended_data += "<Data name=\"Excluded area (m²)\"><value>0</value></Data>"
         extended_data += "<Data name=\"Lot volume\"><value>0</value></Data>"
         extended_data += "<Data name=\"Surveyed\"><value>Y</value></Data>"
@@ -63,7 +94,7 @@ def generate_kml(features: list, region: str, fill_hex: str, fill_opacity: float
         extended_data += "<Data name=\"st_perimeter(shape)\"><value>0.0913818171562543</value></Data>"
         extended_data += "<Data name=\"coordinate-systems\"><value>GDA2020 lat/lng</value></Data>"
         # Add current date and time
-        current_date_time = "01:22 PM AEST on Thursday, July 17, 2025"
+        current_date_time = "02:17 PM AEST on Thursday, July 17, 2025"
         extended_data += f"<Data name=\"Generated On\"><value>{current_date_time}</value></Data>"
         extended_data += "</ExtendedData>"
 
@@ -201,6 +232,8 @@ with col2:
         )
         submit = st.form_submit_button("Search")
     if submit:
+        # Show loading overlay
+        st.markdown("<div class='loading-overlay'><div class='loading-bar'><div class='loading-progress'></div></div><p>Searching parcels...</p></div>", unsafe_allow_html=True)
         inputs = [line.strip() for line in bulk_query.splitlines() if line.strip()]
         all_feats = []
         all_regions = []
@@ -259,6 +292,8 @@ with col2:
                     all_regions.append("QLD")
         st.session_state['features'] = all_feats
         st.session_state['regions'] = all_regions
+        # Hide loading overlay after search
+        st.markdown("<script>document.querySelector('.loading-overlay').style.display = 'none';</script>", unsafe_allow_html=True)
 
     if st.session_state.get('features'):
         features = st.session_state['features']
