@@ -2,71 +2,6 @@ import streamlit as st
 from pathlib import Path
 
 EMBEDDED_CSS = """
-/* Hide Streamlit header/footer for a clean UI */
-#MainMenu, footer, header {
-  visibility: hidden !important;
-}
-
-/* Sidebar styling */
-[data-testid="stSidebar"] {
-  background-color: #2b3035 !important;
-}
-[data-testid="stSidebar"] * {
-  color: #fafafa !important;
-}
-[data-testid="stSidebar"] .stTextInput input,
-[data-testid="stSidebar"] .stTextArea textarea {
-  background-color: #3e444a !important;
-  color: #fafafa !important;
-}
-
-/* Main content background */
-[data-testid="stAppViewContainer"] {
-  background-color: #0e1117 !important;
-  color: #fafafa;
-}
-
-/* Folium basemap controls */
-.leaflet-control-layers-list {
-  background: rgba(40, 40, 40, 0.8) !important;
-  color: #fafafa !important;
-}
-
-/* Results table hide index column */
-.kvDataTable table {
-  font-size: 0.9em;
-}
-
-/* Loading spinner */
-.loading-icon {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 40px;
-  height: 40px;
-  border: 4px solid #f3f3f3;
-  border-top: 4px solid #00ff00;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-  z-index: 1000;
-  display: none;
-}
-
-@keyframes spin {
-  0% {
-    transform: translate(-50%, -50%) rotate(0deg);
-  }
-  100% {
-    transform: translate(-50%, -50%) rotate(360deg);
-  }
-}
-
-.loading-active .loading-icon {
-  display: block;
-}
-
-/* Map sizing */
 [data-testid="stAppViewContainer"] .main .block-container {
   padding: 0;
 }
@@ -74,7 +9,6 @@ EMBEDDED_CSS = """
 .map-container {
   height: 100vh;
   width: 100%;
-  overflow: auto;
 }
 
 .map-container iframe {
@@ -88,13 +22,8 @@ st.set_page_config(page_title="Parcel Viewer", layout="wide")
 
 css_path = Path(__file__).resolve().parent / "style.css"
 if css_path.exists():
-    try:
-        css = css_path.read_text()
-        st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)
-    except Exception as e:  # pragma: no cover - debug helper
-        st.error(f"Failed to load CSS: {e}")
+    st.markdown(f"<style>{css_path.read_text()}</style>", unsafe_allow_html=True)
 else:
-    st.warning(f"CSS file not found: {css_path}")
     st.markdown(f"<style>{EMBEDDED_CSS}</style>", unsafe_allow_html=True)
 
 import requests, folium, pandas as pd, re
@@ -107,8 +36,8 @@ from kml_utils import (
     get_bounds,
 )
 
-# Sidebar and map layout
-map_col, sidebar_col = st.columns([5, 1], gap="small")
+# Sidebar and map layout (left panel for queries)
+sidebar_col, map_col = st.columns([1, 5], gap="small")
 
 with sidebar_col:
     st.markdown("<div class='loading-icon'></div>", unsafe_allow_html=True)
