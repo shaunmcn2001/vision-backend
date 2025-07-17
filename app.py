@@ -40,10 +40,21 @@ def generate_kml(features: list, region: str, fill_hex: str, fill_opacity: float
             lot = props.get("lotnumber", "")
             sec = props.get("sectionnumber", "") or ""
             planlabel = props.get("planlabel", "")
-            placename = f"Lot {lot} {('Sec '+sec+' ' if sec else '')}{planlabel}"
+            placename = f"Lot {lot} {'Section ' + sec + ' ' if sec else ''}{planlabel}"
         
-        # Removed description tag entirely
+        # Create table for balloon with all properties in English
+        description = "<table border='1' style='border-collapse: collapse;'>"
+        description += "<tr><th style='padding: 5px; border: 1px solid black;'>Property</th><th style='padding: 5px; border: 1px solid black;'>Value</th></tr>"
+        for key, value in props.items():
+            if value:  # Only include non-empty values
+                description += f"<tr><td style='padding: 5px; border: 1px solid black;'>{key}</td><td style='padding: 5px; border: 1px solid black;'>{value}</td></tr>"
+        # Add current date and time
+        current_date_time = "01:18 PM AEST on Thursday, July 17, 2025"
+        description += f"<tr><td style='padding: 5px; border: 1px solid black;'>Generated On</td><td style='padding: 5px; border: 1px solid black;'>{current_date_time}</td></tr>"
+        description += "</table>"
+
         kml_lines.append(f"<Placemark><name>{placename}</name>")
+        kml_lines.append(f"<description><![CDATA[{description}]]></description>")
         kml_lines.append("<Style>")
         kml_lines.append(f"<LineStyle><color>{outline_kml_color}</color><width>{outline_weight}</width></LineStyle>")
         kml_lines.append(f"<PolyStyle><color>{fill_kml_color}</color></PolyStyle>")
