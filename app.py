@@ -85,7 +85,7 @@ def generate_kml(features: list, region: str, fill_hex: str, fill_opacity: float
         extended_data += "<Data name=\"st_perimeter(shape)\"><value>0.0913818171562543</value></Data>"
         extended_data += "<Data name=\"coordinate-systems\"><value>GDA2020 lat/lng</value></Data>"
         # Add current date and time
-        current_date_time = "02:39 PM AEST on Thursday, July 17, 2025"
+        current_date_time = "04:57 PM AEST on Thursday, July 17, 2025"
         extended_data += f"<Data name=\"Generated On\"><value>{current_date_time}</value></Data>"
         extended_data += "</ExtendedData>"
 
@@ -213,21 +213,13 @@ def get_bounds(features: list):
         return [[-39, 137], [-9, 155]]
     return [[min_lat, min_lon], [max_lat, max_lon]]
 
-col1, col2 = st.columns([3, 1], gap="small")
-
-# Initialize session state for loading
-if 'loading' not in st.session_state:
-    st.session_state['loading'] = False
-
-with col2:
+# Move to sidebar
+with st.sidebar:
     st.markdown("<div class='loading-icon'></div>", unsafe_allow_html=True)
-    with st.form("search_form"):
-        bulk_query = st.text_area(
-            "Parcel search (bulk):",
-            "",
-            help="Enter Lot/Plan (QLD) or Lot/Section/Plan (NSW) one per line."
-        )
-        submit = st.form_submit_button("Search")
+    with st.expander("Search Parcels", expanded=True):
+        with st.form("search_form"):
+            bulk_query = st.text_area("Parcel search (bulk):", "", help="Enter Lot/Plan (QLD) or Lot/Section/Plan (NSW) one per line.")
+            submit = st.form_submit_button("Search")
     if submit:
         # Set loading state to True
         st.session_state['loading'] = True
@@ -290,51 +282,55 @@ with col2:
                     all_regions.append("QLD")
         st.session_state['features'] = all_feats
         st.session_state['regions'] = all_regions
+        st.success(f"Found {len(all_feats)} parcels.")
         # Set loading state to False and hide icon
         st.session_state['loading'] = False
         st.markdown("<script>document.querySelector('.stApp').classList.remove('loading-active');</script>", unsafe_allow_html=True)
 
     if st.session_state.get('features'):
-        features = st.session_state['features']
-        regions = st.session_state.get('regions', [])
-        export_region = "QLD" if "QLD" in regions else ("NSW" if "NSW" in regions else "QLD")
-        fill_color = st.color_picker("Fill color", "#FF0000", key="fill_color")
-        outline_color = st.color_picker("Outline color", "#000000", key="outline_color")
-        fill_opacity = st.slider("Fill opacity", 0.0, 1.0, 0.5, step=0.01, key="fill_opacity")
-        outline_weight = st.slider("Outline weight", 1, 10, 2, key="outline_weight")
-        folder_name = st.text_input("KML Folder Name", value="Parcels", key="folder_name")
-        data = []
-        for i, feat in enumerate(features):
-            props = feat.get("properties", {})
-            if regions[i] == "QLD":
-                data.append({"Lot": props.get("lot"), "Plan": props.get("plan")})
-            else:
-                data.append({"Lot": props.get("lotnumber"), "Plan": props.get("planlabel", "")})
-        df = pd.DataFrame(data)
-        gb = GridOptionsBuilder.from_dataframe(df)
-        gb.configure_column("Lot", headerName="Lot", editable=False)
-        gb.configure_column("Plan", headerName="Plan", editable=False)
-        gb.configure_selection(selection_mode="multiple", use_checkbox=True)
-        gridOptions = gb.build()
-        grid_resp = AgGrid(df, gridOptions=gridOptions, height=250, update_mode=GridUpdateMode.SELECTION_CHANGED, theme="streamlit")
-        sel_rows = grid_resp.get("selected_rows", [])
-        selected_features = []
-        for sel in sel_rows:
-            for i, feat in enumerate(features):
+        with st.expander("Styling Options", expanded=True):
+            fill_color = st.color_picker("Fill color", "#FF0000", key="fill_color")
+            outline_color = st.color_picker("Outline color", "#000000", key="outline_color")
+            fill_opacity = st.slider("Fill opacity", 0.0, 1.0, 0.5, step=0.01, key="fill_opacity")
+            outline_weight = st.slider("Outline weight", 1, 10, 2, key="outline_weight")
+        with st.expander("Export Options", expanded=True):
+            folder_name = st.text_input("KML Folder Name", value="Parcels", key="folder_name")
+            data = []
+            for i, feat in enumerate(st.session_state['features']):
                 props = feat.get("properties", {})
-                if regions[i] == "QLD":
-                    if props.get("lot") == sel["Lot"] and props.get("plan") == sel["Plan"]:
-                        selected_features.append(feat)
-                        break
+                if st.session_state['regions'][i] == "QLD":
+                    data.append({"Lot": props.get("lot"), "Plan": props.get("plan")})
                 else:
-                    if props.get("lotnumber") == sel["Lot"] and props.get("planlabel") == sel["Plan"]:
-                        selected_features.append(feat)
-                        break
-        st.download_button("Download KML", data=generate_kml(selected_features or features, export_region, fill_color, fill_opacity, outline_color, outline_weight, folder_name), file_name="parcels.kml")
-        st.download_button("Download SHP", data=generate_shapefile(selected_features or features, export_region), file_name="parcels.zip")
+                    data.append({"Lot": props.get("lotnumber"), "Plan": props.get("planlabel", "")})
+            df = pd.DataFrame(data)
+            gb = GridOptionsBuilder.from_dataframe(df)
+            gb.configure_column("Lot", headerName="Lot", editable=False)
+            gb.configure_column("Plan", headerName="Plan", editable=False)
+            gb.configure_selection(selection_mode="multiple", use_checkbox=True)
+            gb.configure_pagination(paginationAutoPageSize=True)
+            gridOptions = gb.build()
+            grid_resp = AgGrid(df, gridOptions=gridOptions, height=300, update_mode=GridUpdateMode.SELECTION_CHANGED, theme="streamlit")
+            sel_rows = grid_resp.get("selected_rows", [])
+            selected_features = []
+            for sel in sel_rows:
+                for i, feat in enumerate(st.session_state['features']):
+                    props = feat.get("properties", {})
+                    if st.session_state['regions'][i] == "QLD":
+                        if props.get("lot") == sel["Lot"] and props.get("plan") == sel["Plan"]:
+                            selected_features.append(feat)
+                            break
+                    else:
+                        if props.get("lotnumber") == sel["Lot"] and props.get("planlabel") == sel["Plan"]:
+                            selected_features.append(feat)
+                            break
+            with st.spinner("Preparing KML..."):
+                st.download_button("Download KML", data=generate_kml(selected_features or st.session_state['features'], export_region, fill_color, fill_opacity, outline_color, outline_weight, folder_name), file_name="parcels.kml")
+            with st.spinner("Preparing SHP..."):
+                st.download_button("Download SHP", data=generate_shapefile(selected_features or st.session_state['features'], export_region), file_name="parcels.zip")
 
-with col1:
-    base_map = folium.Map(location=[-23.5, 143.0], zoom_start=5, tiles=None)
+# Map in main area
+with st.container():
+    base_map = folium.Map(location=[-23.5, 143.0], zoom_start=5, tiles=None, zoomControl=True)
     folium.TileLayer('OpenStreetMap', name='OpenStreetMap', control=True).add_to(base_map)
     folium.TileLayer('CartoDB positron', name='CartoDB Positron', control=True).add_to(base_map)
     folium.TileLayer('CartoDB dark_matter', name='CartoDB Dark', control=True).add_to(base_map)
@@ -354,6 +350,6 @@ with col1:
         base_map.fit_bounds(bounds)
     else:
         base_map.fit_bounds([[-39, 137], [-9, 155]])
-    folium.LayerControl(collapsed=True).add_to(base_map)
+    folium.LayerControl(collapsed=False).add_to(base_map)
     map_html = base_map._repr_html_()
-    st.components.v1.html(map_html, height=600, width=None, scrolling=False)
+    st.components.v1.html(map_html, height="100vh", width=None, scrolling=False)
