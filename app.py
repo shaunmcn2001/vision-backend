@@ -279,12 +279,12 @@ with col2:
                         selected_features.append(feat)
                         break
         st.download_button("Download KML", data=generate_kml(selected_features or features, export_region, fill_color, fill_opacity, outline_color, outline_weight), file_name="parcels.kml")
-        st.download_button("Download SHP", data=generate_shapefile(selected_features or features, export_region), file_name=" parcels.zip")
+        st.download_button("Download SHP", data=generate_shapefile(selected_features or features, export_region), file_name="parcels.zip")
 
 with col1:
     base_map = folium.Map(location=[-23.5, 143.0], zoom_start=5, tiles=None)
     folium.TileLayer('OpenStreetMap', name='OpenStreetMap', control=True).add_to(base_map)
-    folium.TileLayer('CartoDB positron', name='CartoDB Positron', control=True).add arabe_map)
+    folium.TileLayer('CartoDB positron', name='CartoDB Positron', control=True).add_to(base_map)
     folium.TileLayer('CartoDB dark_matter', name='CartoDB Dark', control=True).add_to(base_map)
     folium.TileLayer(tiles='https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', attr='Google', name='Google Satellite', control=True).add_to(base_map)
     if st.session_state.get('features') and st.session_state['features']:
