@@ -1,6 +1,7 @@
 import io
 import os
 import zipfile
+import tempfile
 from datetime import datetime
 
 
@@ -132,64 +133,57 @@ def generate_kml(
 def generate_shapefile(features: list, region: str) -> bytes:
     """Generate a zipped shapefile for the provided features."""
     import shapefile
-
-    temp_dir = "temp_shp_export"
-    os.makedirs(temp_dir, exist_ok=True)
-    base_path = os.path.join(temp_dir, "parcels")
-    w = shapefile.Writer(base_path)
-    w.field("LOT", "C", size=10)
-    w.field("SEC", "C", size=10)
-    w.field("PLAN", "C", size=15)
-    w.autoBalance = 1
-    for feat in features:
-        props = feat.get("properties", {})
-        if region == "QLD":
-            lot_val = props.get("lot", "") or ""
-            sec_val = ""
-            plan_val = props.get("plan", "") or ""
-        else:
-            lot_val = props.get("lotnumber", "") or ""
-            sec_val = props.get("sectionnumber", "") or ""
-            plan_val = props.get("planlabel", "") or ""
-        w.record(lot_val, sec_val, plan_val)
-        geom = feat.get("geometry", {})
-        gtype = geom.get("type")
-        coords = geom.get("coordinates")
-        parts = []
-        if gtype == "Polygon":
-            for ring in coords:
-                if ring and ring[0] != ring[-1]:
-                    ring = ring + [ring[0]]
-                parts.append(ring)
-        elif gtype == "MultiPolygon":
-            for poly in coords:
-                for ring in poly:
+    with tempfile.TemporaryDirectory() as temp_dir:
+        base_path = os.path.join(temp_dir, "parcels")
+        w = shapefile.Writer(base_path)
+        w.field("LOT", "C", size=10)
+        w.field("SEC", "C", size=10)
+        w.field("PLAN", "C", size=15)
+        w.autoBalance = 1
+        for feat in features:
+            props = feat.get("properties", {})
+            if region == "QLD":
+                lot_val = props.get("lot", "") or ""
+                sec_val = ""
+                plan_val = props.get("plan", "") or ""
+            else:
+                lot_val = props.get("lotnumber", "") or ""
+                sec_val = props.get("sectionnumber", "") or ""
+                plan_val = props.get("planlabel", "") or ""
+            w.record(lot_val, sec_val, plan_val)
+            geom = feat.get("geometry", {})
+            gtype = geom.get("type")
+            coords = geom.get("coordinates")
+            parts = []
+            if gtype == "Polygon":
+                for ring in coords:
                     if ring and ring[0] != ring[-1]:
                         ring = ring + [ring[0]]
                     parts.append(ring)
-        if parts:
-            w.poly(parts)
-    w.close()
-    prj_text = (
-        'GEOGCS["WGS 84",DATUM["WGS_1984",'
-        'SPHEROID["WGS 84",6378137,298.257223563],'
-        'AUTHORITY["EPSG","6326"]],PRIMEM["Greenwich",0],'
-        'UNIT["degree",0.0174532925199433],AUTHORITY["EPSG","4326"]]'
-    )
-    with open(base_path + ".prj", "w") as prj:
-        prj.write(prj_text)
-    zip_buffer = io.BytesIO()
-    with zipfile.ZipFile(zip_buffer, "w") as z:
-        for ext in (".shp", ".shx", ".dbf", ".prj"):
-            file_path = base_path + ext
-            if os.path.exists(file_path):
-                z.write(file_path, arcname="parcels" + ext)
-    for ext in (".shp", ".shx", ".dbf", ".prj"):
-        file_path = base_path + ext
-        if os.path.exists(file_path):
-            os.remove(file_path)
-    os.rmdir(temp_dir)
-    return zip_buffer.getvalue()
+            elif gtype == "MultiPolygon":
+                for poly in coords:
+                    for ring in poly:
+                        if ring and ring[0] != ring[-1]:
+                            ring = ring + [ring[0]]
+                        parts.append(ring)
+            if parts:
+                w.poly(parts)
+        w.close()
+        prj_text = (
+            'GEOGCS["WGS 84",DATUM["WGS_1984",'
+            'SPHEROID["WGS 84",6378137,298.257223563],'
+            'AUTHORITY["EPSG","6326"]],PRIMEM["Greenwich",0],'
+            'UNIT["degree",0.0174532925199433],AUTHORITY["EPSG","4326"]]'
+        )
+        with open(base_path + ".prj", "w") as prj:
+            prj.write(prj_text)
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, "w") as z:
+            for ext in (".shp", ".shx", ".dbf", ".prj"):
+                file_path = base_path + ext
+                if os.path.exists(file_path):
+                    z.write(file_path, arcname="parcels" + ext)
+        return zip_buffer.getvalue()
 
 
 def get_bounds(features: list):
