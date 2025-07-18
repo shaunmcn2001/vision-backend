@@ -18,7 +18,6 @@ from kml_utils import (
 
 # Sidebar and map layout using Streamlit's sidebar
 with st.sidebar:
-    st.markdown("<div class='loading-icon'></div>", unsafe_allow_html=True)
     with st.expander("Search Parcels", expanded=True):
         with st.form("search_form"):
             bulk_query = st.text_area(
@@ -28,20 +27,16 @@ with st.sidebar:
             )
             submit = st.form_submit_button("Search")
     if submit:
-        st.session_state["loading"] = True
-        st.markdown(
-            "<script>document.querySelector('.stApp').classList.add('loading-active');</script>",
-            unsafe_allow_html=True,
-        )
         inputs = [line.strip() for line in bulk_query.splitlines() if line.strip()]
         all_feats = []
         all_regions = []
-        for user_input in inputs:
-            if "/" in user_input:
-                region = "NSW"
-                parts = user_input.split("/")
-                if len(parts) == 3:
-                    lot_str, sec_str, plan_str = (
+        with st.spinner("Searching..."):
+            for user_input in inputs:
+                if "/" in user_input:
+                    region = "NSW"
+                    parts = user_input.split("/")
+                    if len(parts) == 3:
+                        lot_str, sec_str, plan_str = (
                         parts[0].strip(),
                         parts[1].strip(),
                         parts[2].strip(),
@@ -81,38 +76,33 @@ with st.sidebar:
                 for feat in feats:
                     all_feats.append(feat)
                     all_regions.append("NSW")
-            else:
-                region = "QLD"
-                inp = user_input.replace(" ", "").upper()
-                match = re.match(r"^(\d+)([A-Z].+)$", inp)
-                if not match:
-                    continue
-                lot_str = match.group(1)
-                plan_str = match.group(2)
-                url = "https://spatial-gis.information.qld.gov.au/arcgis/rest/services/PlanningCadastre/LandParcelPropertyFramework/MapServer/4/query"
-                params = {
-                    "where": f"lot='{lot_str}' AND plan='{plan_str}'",
-                    "outFields": "lot,plan,lotplan,locality",
-                    "outSR": "4326",
-                    "f": "geoJSON",
-                }
-                try:
-                    res = requests.get(url, params=params, timeout=10)
-                    data = res.json()
-                except Exception as e:
-                    data = {}
-                feats = data.get("features", []) or []
-                for feat in feats:
-                    all_feats.append(feat)
-                    all_regions.append("QLD")
+                else:
+                    region = "QLD"
+                    inp = user_input.replace(" ", "").upper()
+                    match = re.match(r"^(\d+)([A-Z].+)$", inp)
+                    if not match:
+                        continue
+                    lot_str = match.group(1)
+                    plan_str = match.group(2)
+                    url = "https://spatial-gis.information.qld.gov.au/arcgis/rest/services/PlanningCadastre/LandParcelPropertyFramework/MapServer/4/query"
+                    params = {
+                        "where": f"lot='{lot_str}' AND plan='{plan_str}'",
+                        "outFields": "lot,plan,lotplan,locality",
+                        "outSR": "4326",
+                        "f": "geoJSON",
+                    }
+                    try:
+                        res = requests.get(url, params=params, timeout=10)
+                        data = res.json()
+                    except Exception as e:
+                        data = {}
+                    feats = data.get("features", []) or []
+                    for feat in feats:
+                        all_feats.append(feat)
+                        all_regions.append("QLD")
         st.session_state["features"] = all_feats
         st.session_state["regions"] = all_regions
         st.success(f"Found {len(all_feats)} parcels.")
-        st.session_state["loading"] = False
-        st.markdown(
-            "<script>document.querySelector('.stApp').classList.remove('loading-active');</script>",
-            unsafe_allow_html=True,
-        )
 
     if st.session_state.get("features"):
         with st.expander("Styling Options", expanded=True):
