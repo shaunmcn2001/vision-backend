@@ -218,9 +218,90 @@ def get_bounds(features: list):
     return [[min_lat, min_lon], [max_lat, max_lon]]
 
 
+async def fetch_parcel_geojson(lotplan: str):
+    """Fetch parcel GeoJSON for a lot/plan string.
+
+    This is a lightweight async wrapper around the public ArcGIS services used in
+    ``app.py``. The function makes a best effort request and returns a GeoJSON
+    ``dict`` or ``None`` if the parcel cannot be found.
+    """
+    import httpx, re
+
+    if "/" in lotplan:
+        # NSW format: lot[/section]/plan
+        parts = lotplan.split("/")
+        if len(parts) == 3:
+            lot, sec, plan = parts
+        elif len(parts) == 2:
+            lot, sec, plan = parts[0], "", parts[1]
+        else:
+            return None
+        plan_num = "".join(filter(str.isdigit, plan))
+        if not lot or not plan_num:
+            return None
+        where_clauses = [f"lotnumber='{lot}'"]
+        if sec:
+            where_clauses.append(f"sectionnumber='{sec}'")
+        else:
+            where_clauses.append("(sectionnumber IS NULL OR sectionnumber = '')")
+        where_clauses.append(f"plannumber={plan_num}")
+        where = " AND ".join(where_clauses)
+        url = (
+            "https://maps.six.nsw.gov.au/arcgis/rest/services/public/NSW_Cadastre/"
+            "MapServer/9/query"
+        )
+        params = {
+            "where": where,
+            "outFields": "lotnumber,sectionnumber,planlabel",
+            "outSR": "4326",
+            "f": "geoJSON",
+        }
+    else:
+        inp = lotplan.replace(" ", "").upper()
+        match = re.match(r"^(\d+)([A-Z].+)$", inp)
+        if not match:
+            return None
+        lot, plan = match.group(1), match.group(2)
+        url = (
+            "https://spatial-gis.information.qld.gov.au/arcgis/rest/services/"
+            "PlanningCadastre/LandParcelPropertyFramework/MapServer/4/query"
+        )
+        params = {
+            "where": f"lot='{lot}' AND plan='{plan}'",
+            "outFields": "lot,plan,lotplan,locality",
+            "outSR": "4326",
+            "f": "geoJSON",
+        }
+
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            res = await client.get(url, params=params)
+            data = res.json()
+    except Exception:
+        return None
+
+    feats = data.get("features") or []
+    return {"type": "FeatureCollection", "features": feats} if feats else None
+
+
+async def build_kml(lotplan: str) -> str | None:
+    """Return a simple KML for the first parcel in ``lotplan``."""
+    data = await fetch_parcel_geojson(lotplan)
+    if not data:
+        return None
+    features = data.get("features", [])
+    if not features:
+        return None
+    props = features[0].get("properties", {})
+    region = "QLD" if "plan" in props else "NSW"
+    return generate_kml(features, region, "#FF0000", 0.5, "#000000", 2, lotplan)
+
+
 __all__ = [
     "_hex_to_kml_color",
     "generate_kml",
     "generate_shapefile",
     "get_bounds",
+    "fetch_parcel_geojson",
+    "build_kml",
 ]
