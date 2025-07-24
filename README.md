@@ -17,10 +17,26 @@ Run the tests to make sure everything works:
 pytest
 ```
 
-## Running the app
+## Running the API (FastAPI)
 
-Start the Streamlit server and open the parcel viewer in your browser:
+**Local**
 
 ```bash
-streamlit run app.py
+pip install -r requirements.txt
+uvicorn main:app --reload
+# → http://127.0.0.1:8000/docs
 ```
+
+**Render**
+
+1. Create a *Web Service* from this repo.
+2. Build cmd: *pip install -r requirements.txt*
+3. Start cmd: **uvicorn main:app --host 0.0.0.0 --port $PORT**
+4. Region: **Sydney** (keeps latency low to the front‑end).
+5. Add env vars such as `ARCGIS_API_KEY` if used in `kml_utils`.
+
+Your front‑end should reference this with  
+`VITE_API_BASE=https://<your-service>.onrender.com`.
+
+# Note: app.py (Streamlit) kept for local visual testing only.
+

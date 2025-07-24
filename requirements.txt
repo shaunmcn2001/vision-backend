@@ -1,21 +1,18 @@
-# ─── Streamlit core & helpers ────────────────────
-streamlit>=1.35.0,<2        # must be ≥1.35 for st-folium 0.25+
-streamlit-option-menu==0.3.6
-streamlit-folium>=0.25.0    # latest build, requires streamlit≥1.35
-streamlit-aggrid==0.3.4.post3  # PyPI build with checkbox support
-
-# ─── Mapping stack ───────────────────────────────
-folium>=0.16.0
-simplekml==1.3.6
-
-# ─── Geo stack (wheels for Py 3.12) ──────────────
-geopandas==0.14.4
+fastapi>=0.111
 fiona>=1.10.1
-shapely>=2.1.0
+folium>=0.16.0
+geopandas==0.14.4
+httpx>=0.27
 pyproj>=3.6.1
-
-# ─── Utilities ──────────────────────────────────
-PyYAML>=6.0
-requests>=2.31.0
 pyshp==2.3.1
 pytest
+python-multipart>=0.0.6
+PyYAML>=6.0
+requests>=2.31.0
+shapely>=2.1.0
+simplekml==1.3.6
+streamlit-aggrid==0.3.4.post3  # PyPI build with checkbox support
+streamlit-folium>=0.25.0    # latest build, requires streamlit≥1.35
+streamlit-option-menu==0.3.6
+streamlit>=1.35.0,<2        # must be ≥1.35 for st-folium 0.25+
+uvicorn[standard]>=0.29
