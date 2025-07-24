@@ -10,6 +10,12 @@ async def index():
     """Simple index redirect hinting at docs."""
     return {"message": "See /docs for API documentation"}
 
+
+@app.head("/")
+async def index_head() -> Response:
+    """Return an empty response so HEAD requests succeed."""
+    return Response()
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],      # TODO: tighten in prod
@@ -20,6 +26,12 @@ app.add_middleware(
 @app.get("/health")
 async def health():          # basic liveness probe
     return {"status": "ok"}
+
+
+@app.head("/health")
+async def health_head() -> Response:
+    """Empty 200 response for HEAD health checks."""
+    return Response()
 
 @app.get("/api/parcels/{lotplan}")
 async def parcel_geojson(lotplan: str):
@@ -33,6 +45,12 @@ async def parcel_geojson(lotplan: str):
     if data is None:
         raise HTTPException(404, f"{lotplan} not found")
     return data
+
+
+@app.head("/api/parcels/{lotplan}")
+async def parcel_geojson_head(lotplan: str) -> Response:
+    """Return 200 for HEAD checks even if parcel does not exist."""
+    return Response()
 
 @app.get("/api/parcels/{lotplan}/kml")
 async def parcel_kml(lotplan: str):
@@ -49,3 +67,9 @@ async def parcel_kml(lotplan: str):
         media_type="application/vnd.google-earth.kml+xml",
         headers={"Content-Disposition": f'attachment; filename="{lotplan}.kml"'}
     )
+
+
+@app.head("/api/parcels/{lotplan}/kml")
+async def parcel_kml_head(lotplan: str) -> Response:
+    """Empty head response for KML endpoint."""
+    return Response()
