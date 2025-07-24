@@ -4,6 +4,12 @@ import kml_utils  # existing helper module
 
 app = FastAPI(title="Vision\u00a0Backend API", version="1.0.0")
 
+
+@app.get("/")
+async def index():
+    """Simple index redirect hinting at docs."""
+    return {"message": "See /docs for API documentation"}
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],      # TODO: tighten in prod
