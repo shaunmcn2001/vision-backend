@@ -32,6 +32,7 @@ with st.sidebar:
         all_regions = []
         with st.spinner("Searching..."):
             for user_input in inputs:
+                lot_str = sec_str = plan_str = ""
                 if "/" in user_input:
                     region = "NSW"
                     parts = user_input.split("/")
