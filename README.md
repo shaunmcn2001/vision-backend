@@ -34,6 +34,7 @@ uvicorn main:app --reload
 3. Start cmd: **uvicorn main:app --host 0.0.0.0 --port $PORT**
 4. Region: **Sydney** (keeps latency low to the front‑end).
 5. Add env vars such as `ARCGIS_API_KEY` if used in `kml_utils`.
+6. Confirm `/health` returns `{"status": "ok"}` once deployed.
 
 Your front‑end should reference this with  
 `VITE_API_BASE=https://<your-service>.onrender.com`.
