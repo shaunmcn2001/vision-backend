@@ -41,10 +41,10 @@ with st.sidebar:
                         parts[1].strip(),
                         parts[2].strip(),
                     )
-                elif len(parts) == 2:
-                    lot_str, sec_str, plan_str = parts[0].strip(), "", parts[1].strip()
-                else:
-                    lot_str, sec_str, plan_str = "", "", ""
+                    elif len(parts) == 2:
+                        lot_str, sec_str, plan_str = parts[0].strip(), "", parts[1].strip()
+                    else:
+                        lot_str, sec_str, plan_str = "", "", ""
                 if sec_str == "" and "//" in user_input:
                     lot_str, plan_str = user_input.split("//")
                     sec_str = ""
@@ -76,30 +76,29 @@ with st.sidebar:
                 for feat in feats:
                     all_feats.append(feat)
                     all_regions.append("NSW")
-                else:
-                    region = "QLD"
-                    inp = user_input.replace(" ", "").upper()
-                    match = re.match(r"^(\d+)([A-Z].+)$", inp)
-                    if not match:
-                        continue
-                    lot_str = match.group(1)
-                    plan_str = match.group(2)
-                    url = "https://spatial-gis.information.qld.gov.au/arcgis/rest/services/PlanningCadastre/LandParcelPropertyFramework/MapServer/4/query"
-                    params = {
-                        "where": f"lot='{lot_str}' AND plan='{plan_str}'",
-                        "outFields": "lot,plan,lotplan,locality",
-                        "outSR": "4326",
-                        "f": "geoJSON",
-                    }
-                    try:
-                        res = requests.get(url, params=params, timeout=10)
-                        data = res.json()
-                    except Exception as e:
-                        data = {}
-                    feats = data.get("features", []) or []
-                    for feat in feats:
-                        all_feats.append(feat)
-                        all_regions.append("QLD")
+                region = "QLD"
+                inp = user_input.replace(" ", "").upper()
+                match = re.match(r"^(\d+)([A-Z].+)$", inp)
+                if not match:
+                    continue
+                lot_str = match.group(1)
+                plan_str = match.group(2)
+                url = "https://spatial-gis.information.qld.gov.au/arcgis/rest/services/PlanningCadastre/LandParcelPropertyFramework/MapServer/4/query"
+                params = {
+                    "where": f"lot='{lot_str}' AND plan='{plan_str}'",
+                    "outFields": "lot,plan,lotplan,locality",
+                    "outSR": "4326",
+                    "f": "geoJSON",
+                }
+                try:
+                    res = requests.get(url, params=params, timeout=10)
+                    data = res.json()
+                except Exception as e:
+                    data = {}
+                feats = data.get("features", []) or []
+                for feat in feats:
+                    all_feats.append(feat)
+                    all_regions.append("QLD")
         st.session_state["features"] = all_feats
         st.session_state["regions"] = all_regions
         st.success(f"Found {len(all_feats)} parcels.")
